@@ -48,7 +48,7 @@ async def line_webhook(request: Request, x_line_signature: str = Header(None)):
     except InvalidSignatureError:
         raise HTTPException(status_code=400, detail="Invalid signature")
 
-    async with ApiClient(line_config) as api_client:
+    with ApiClient(line_config) as api_client:
         line_bot_api = MessagingApi(api_client)
         for event in events:
             if not isinstance(event, MessageEvent):
