@@ -30,19 +30,27 @@ def invalidate_client():
     logger.info("Google Sheets client invalidated")
 
 
-def get_sheet_as_dict(sheet_title: str) -> dict[str, str]:
+def get_sheet_as_dict(spreadsheet_id: str, sheet_title: str) -> dict[str, str]:
     """อ่าน Sheet แบบ Metric|Value แล้วคืนเป็น dict"""
     client = _get_client()
-    sh = client.open_by_key(settings.SPREADSHEET_ID)
+    sh = client.open_by_key(spreadsheet_id)
     ws = sh.worksheet(sheet_title)
     rows = ws.get_all_values()
     return {row[0]: row[1] for row in rows[1:] if len(row) >= 2}
 
 
-def get_sheet_records(sheet_title: str) -> list[dict]:
+def get_sheet_records(spreadsheet_id: str, sheet_title: str) -> list[dict]:
     """อ่าน Sheet แบบมี Header Row แล้วคืนเป็น list of dict"""
     client = _get_client()
-    sh = client.open_by_key(settings.SPREADSHEET_ID)
+    sh = client.open_by_key(spreadsheet_id)
+    ws = sh.worksheet(sheet_title)
+    return ws.get_all_records()
+
+
+def get_master_sheet_records(sheet_title: str) -> list[dict]:
+    """อ่าน Sheet แบบมี Header Row จาก Master Spreadsheet"""
+    client = _get_client()
+    sh = client.open_by_key(settings.MASTER_SPREADSHEET_ID)
     ws = sh.worksheet(sheet_title)
     return ws.get_all_records()
 
@@ -50,7 +58,7 @@ def get_sheet_records(sheet_title: str) -> list[dict]:
 async def check_sheets_health() -> bool:
     try:
         client = _get_client()
-        client.open_by_key(settings.SPREADSHEET_ID)
+        client.open_by_key(settings.MASTER_SPREADSHEET_ID)
         return True
     except Exception as e:
         logger.error(f"Google Sheets health check failed: {e}")

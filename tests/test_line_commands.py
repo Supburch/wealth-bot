@@ -19,6 +19,7 @@ from unittest.mock import patch, AsyncMock, MagicMock
 from models.portfolio import (
     PortfolioSummary, TodaySummary, HoldingBreakdown, WealthSummary
 )
+from models.user import UserInfo
 
 ALLOWED_USER = "U_ALLOWED_001"
 UNKNOWN_USER = "U_UNKNOWN_999"
@@ -46,21 +47,14 @@ MOCK_WEALTH = WealthSummary(summary=MOCK_PORTFOLIO, top_holdings=MOCK_HOLDINGS)
 MOCK_AAPL = HoldingBreakdown(symbol="AAPL", market_value=300_000.0, weight=30.0, cost=250_000.0, profit_pct=20.0)
 
 
-def _mock_settings():
-    """Return a mock settings object with an allowed user list."""
-    mock = MagicMock()
-    mock.allowed_users_set = {ALLOWED_USER}
-    mock.admin_users_set = set()
-    mock.APP_VERSION = "1.0.0-test"
-    return mock
-
+def _mock_get_user(user_id: str):
+    if user_id == ALLOWED_USER:
+        return UserInfo(user_id=user_id, spreadsheet_id="test_sheet", role="user", enabled=True)
+    return None
 
 @pytest.fixture(autouse=True)
-def patch_settings():
-    # Import the module first to ensure it is registered in sys.modules,
-    # then patch the 'settings' name that was already bound inside it.
-    import services.line_service  # noqa: F401 — side-effect import ensures module is loaded
-    with patch("services.line_service.settings", _mock_settings()):
+def patch_get_user():
+    with patch("services.line_service.get_user", AsyncMock(side_effect=_mock_get_user)):
         yield
 
 

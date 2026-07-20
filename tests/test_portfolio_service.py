@@ -13,6 +13,7 @@ Tests:
 import pytest
 from unittest.mock import patch
 from services import cache as cache_module
+from models.user import UserInfo
 
 
 MOCK_PORTFOLIO_DICT = {
@@ -42,11 +43,15 @@ async def reset_cache():
     yield
     await cache_module.clear_cache()
 
+@pytest.fixture
+def mock_user() -> UserInfo:
+    return UserInfo(user_id="U1", spreadsheet_id="test_sheet", role="user", enabled=True)
 
-async def test_get_portfolio_summary():
+
+async def test_get_portfolio_summary(mock_user):
     with patch("services.portfolio_service.get_sheet_as_dict", return_value=MOCK_PORTFOLIO_DICT):
         from services.portfolio_service import get_portfolio_summary
-        result = await get_portfolio_summary()
+        result = await get_portfolio_summary(mock_user)
 
     assert result.portfolio_value == 1_000_000.0
     assert result.cost_basis == 800_000.0
@@ -55,20 +60,20 @@ async def test_get_portfolio_summary():
     assert result.cash == 50_000.0
 
 
-async def test_get_today_summary():
+async def test_get_today_summary(mock_user):
     with patch("services.portfolio_service.get_sheet_as_dict", return_value=MOCK_TODAY_DICT):
         from services.portfolio_service import get_today_summary
-        result = await get_today_summary()
+        result = await get_today_summary(mock_user)
 
     assert result.portfolio_value == 1_000_000.0
     assert result.today_profit == 5_000.0
     assert result.today_profit_pct == 0.5
 
 
-async def test_get_all_holdings():
+async def test_get_all_holdings(mock_user):
     with patch("services.portfolio_service.get_sheet_records", return_value=MOCK_HOLDINGS_RECORDS):
         from services.portfolio_service import get_all_holdings
-        result = await get_all_holdings()
+        result = await get_all_holdings(mock_user)
 
     assert len(result) == 3
     symbols = [h.symbol for h in result]
@@ -77,11 +82,11 @@ async def test_get_all_holdings():
     assert "BTC" in symbols
 
 
-async def test_get_holding_breakdown_hit():
+async def test_get_holding_breakdown_hit(mock_user):
     """AAPL lookup should return the correct HoldingBreakdown via O(1) index."""
     with patch("services.portfolio_service.get_sheet_records", return_value=MOCK_HOLDINGS_RECORDS):
         from services.portfolio_service import get_holding_breakdown
-        result = await get_holding_breakdown("AAPL")
+        result = await get_holding_breakdown(mock_user, "AAPL")
 
     assert result is not None
     assert result.symbol == "AAPL"
@@ -89,30 +94,30 @@ async def test_get_holding_breakdown_hit():
     assert result.profit_pct == 20.0
 
 
-async def test_get_holding_breakdown_miss():
+async def test_get_holding_breakdown_miss(mock_user):
     """Unknown symbol should return None."""
     with patch("services.portfolio_service.get_sheet_records", return_value=MOCK_HOLDINGS_RECORDS):
         from services.portfolio_service import get_holding_breakdown
-        result = await get_holding_breakdown("ZZZZ")
+        result = await get_holding_breakdown(mock_user, "ZZZZ")
 
     assert result is None
 
 
-async def test_get_holding_breakdown_case_insensitive():
+async def test_get_holding_breakdown_case_insensitive(mock_user):
     """Lowercase symbol should resolve the same as uppercase."""
     with patch("services.portfolio_service.get_sheet_records", return_value=MOCK_HOLDINGS_RECORDS):
         from services.portfolio_service import get_holding_breakdown
-        result = await get_holding_breakdown("aapl")
+        result = await get_holding_breakdown(mock_user, "aapl")
 
     assert result is not None
     assert result.symbol == "AAPL"
 
 
-async def test_get_top_holdings_sorted():
+async def test_get_top_holdings_sorted(mock_user):
     """get_top_holdings should return holdings sorted by weight descending."""
     with patch("services.portfolio_service.get_sheet_records", return_value=MOCK_HOLDINGS_RECORDS):
         from services.portfolio_service import get_top_holdings
-        result = await get_top_holdings()
+        result = await get_top_holdings(mock_user)
 
     weights = [h.weight for h in result]
     assert weights == sorted(weights, reverse=True), "Holdings should be sorted by weight desc"

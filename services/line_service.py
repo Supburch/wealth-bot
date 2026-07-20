@@ -6,6 +6,7 @@ from services.portfolio_service import (
 )
 from services.sheets_service import check_sheets_health, invalidate_client
 from services.cache import clear_cache, get_last_refresh_time, get_cache_entries_count, CACHE_TTL
+from services.user_mapping_service import get_user
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +18,8 @@ def format_number(num: float, is_currency=False) -> str:
     return f"{num:,.0f}"
 
 async def handle_user_command(user_id: str, raw_command: str) -> str:
-    if user_id not in settings.allowed_users_set:
+    user_info = await get_user(user_id)
+    if not user_info or not user_info.enabled:
         return "Unauthorized"
 
     command = raw_command.strip().lower()
@@ -26,7 +28,7 @@ async def handle_user_command(user_id: str, raw_command: str) -> str:
 
     # ---- ADMIN COMMANDS ----
     if command in ["refresh", "reload"]:
-        if user_id not in settings.admin_users_set:
+        if not user_info.is_admin:
             return "⛔ Unauthorized: สำหรับ Admin เท่านั้น"
             
         if command == "refresh":
@@ -47,7 +49,7 @@ async def handle_user_command(user_id: str, raw_command: str) -> str:
     # ---- USER COMMANDS ----
     try:
         if command == "พอร์ต":
-            data = await get_portfolio_summary()
+            data = await get_portfolio_summary(user_info)
             sign_profit = "+" if data.profit >= 0 else ""
             return (
                 f"💰 Portfolio\n"
@@ -58,7 +60,7 @@ async def handle_user_command(user_id: str, raw_command: str) -> str:
             )
             
         elif command == "สรุป":
-            data = await get_wealth_summary()
+            data = await get_wealth_summary(user_info)
             sign_profit = "+" if data.summary.profit >= 0 else ""
             top_holdings_str = "\n".join([h.symbol for h in data.top_holdings[:3]])
             return (
@@ -70,7 +72,7 @@ async def handle_user_command(user_id: str, raw_command: str) -> str:
             )
 
         elif command == "วันนี้":
-            data = await get_today_summary()
+            data = await get_today_summary(user_info)
             sign_today = "+" if data.today_profit >= 0 else ""
             return (
                 f"Portfolio\n฿{format_number(data.portfolio_value, True)}\n\n"
@@ -79,7 +81,7 @@ async def handle_user_command(user_id: str, raw_command: str) -> str:
             )
 
         elif command == "ถืออะไร":
-            data = await get_top_holdings()
+            data = await get_top_holdings(user_info)
             holdings_str = "\n".join([f"{h.symbol} {h.weight:g}%" for h in data])
             return f"Top Holdings\n\n{holdings_str}"
 
@@ -106,7 +108,7 @@ async def handle_user_command(user_id: str, raw_command: str) -> str:
             )
 
         else:
-            breakdown = await get_holding_breakdown(command)
+            breakdown = await get_holding_breakdown(user_info, command)
             if breakdown:
                 sign_profit = "+" if breakdown.profit_pct >= 0 else ""
                 return (
