@@ -61,7 +61,7 @@ async def line_webhook(request: Request, x_line_signature: str = Header(None)):
             logger.info(f"Received message from {user_id}: {text!r}")
 
             reply = await handle_user_command(user_id, text)
-            await line_bot_api.reply_message(
+            line_bot_api.reply_message(
                 ReplyMessageRequest(
                     reply_token=event.reply_token,
                     messages=[TextMessage(text=reply)]
