@@ -17,11 +17,12 @@ async def _fetch_all_users() -> Dict[str, UserInfo]:
             user_id = str(row.get("LINE_USER_ID", "")).strip()
             if not user_id:
                 continue
+            enabled_val = str(row.get("ENABLED", "")).strip().lower()
             users[user_id] = UserInfo(
                 user_id=user_id,
                 spreadsheet_id=str(row.get("SPREADSHEET_ID", "")).strip(),
                 role=str(row.get("ROLE", "user")).strip().lower(),
-                enabled=bool(str(row.get("ENABLED", "")).strip().lower() in ["true", "1", "yes", "y"])
+                enabled=bool(enabled_val in ["true", "1", "yes", "y"]) if enabled_val else True
             )
         return users
     except Exception as e:

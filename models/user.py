@@ -4,7 +4,7 @@ class UserInfo(BaseModel):
     user_id: str
     spreadsheet_id: str
     role: str
-    enabled: bool
+    enabled: bool = True
 
     @property
     def is_admin(self) -> bool:
