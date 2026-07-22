@@ -1,0 +1,42 @@
+import logging
+from typing import Protocol, List
+from core.config import AppConfig
+from core.exceptions import PortfolioReadError
+from models.portfolio import PortfolioRow
+
+logger = logging.getLogger(__name__)
+
+class SheetsGateway(Protocol):
+    def get_sheet_records(self, spreadsheet_id: str, range_name: str) -> List[List[str]]:
+        ...
+
+class PortfolioRepository:
+    def __init__(self, sheets_gateway: SheetsGateway, config: AppConfig):
+        self.sheets_gateway = sheets_gateway
+        self.config = config
+
+    def fetch_portfolio_rows(self, spreadsheet_id: str) -> List[PortfolioRow]:
+        try:
+            raw_data = self.sheets_gateway.get_sheet_records(
+                spreadsheet_id, 
+                self.config.portfolio_range
+            )
+            
+            rows = []
+            for row in raw_data:
+                if len(row) < 4:
+                    continue
+                # Skip header if it exists
+                if row[0].lower() == "symbol":
+                    continue
+                    
+                rows.append(PortfolioRow(
+                    symbol=str(row[0]).strip(),
+                    avg_cost=str(row[1]).strip(),
+                    shares=str(row[2]).strip(),
+                    current_price=str(row[3]).strip()
+                ))
+            return rows
+        except Exception as e:
+            logger.error("Failed to fetch portfolio rows", extra={"spreadsheet_id": spreadsheet_id, "error": str(e)})
+            raise PortfolioReadError(f"Error reading portfolio data") from e
