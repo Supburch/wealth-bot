@@ -1,0 +1,6 @@
+EMPTY_PORTFOLIO = "Portfolio is empty."
+ACCESS_DENIED = "Access Denied."
+PORTFOLIO_READ_ERROR = "Failed to read portfolio."
+PORTFOLIO_PARSE_ERROR = "Failed to parse portfolio."
+UNEXPECTED_ERROR = "Unexpected error occurred."
+UNKNOWN_COMMAND = "Unknown command."
