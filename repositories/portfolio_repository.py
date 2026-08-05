@@ -38,5 +38,11 @@ class PortfolioRepository:
                 ))
             return rows
         except Exception as e:
-            logger.error("Failed to fetch portfolio rows", extra={"spreadsheet_id": spreadsheet_id, "error": str(e)})
-            raise PortfolioReadError(f"Error reading portfolio data") from e
+            logger.error(
+                f"Failed to fetch portfolio rows: {e}",
+                extra={"spreadsheet_id": spreadsheet_id},
+                exc_info=True,
+            )
+            raise PortfolioReadError(
+                f"Error reading portfolio data (spreadsheet_id={spreadsheet_id})"
+            ) from e
