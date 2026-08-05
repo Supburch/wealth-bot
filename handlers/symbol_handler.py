@@ -1,0 +1,36 @@
+﻿import logging
+from models.response import AppResponse
+from core.enums import ResponseType
+from core.messages import ACCESS_DENIED, UNKNOWN_COMMAND, UNEXPECTED_ERROR
+from services.portfolio_service import get_holding_breakdown
+from services.user_mapping_service import get_user
+
+logger = logging.getLogger(__name__)
+
+
+async def handle_symbol_lookup(user_id: str, symbol: str) -> AppResponse:
+    """
+    Fallback handler: look up a holding by symbol string.
+    Called by CommandRouter when no named command matches.
+    """
+    try:
+        user_info = await get_user(user_id)
+        if not user_info or not user_info.enabled:
+            return AppResponse(type=ResponseType.TEXT, text=ACCESS_DENIED)
+
+        breakdown = await get_holding_breakdown(user_info, symbol)
+        if breakdown:
+            sign = "+" if breakdown.profit_pct >= 0 else ""
+            text = (
+                f"{breakdown.symbol}\n\n"
+                f"Market Value:\n฿{breakdown.market_value:,.0f}\n\n"
+                f"Weight:\n{breakdown.weight:g}%\n\n"
+                f"Cost:\n฿{breakdown.cost:,.0f}\n\n"
+                f"Profit:\n{sign}{breakdown.profit_pct}%"
+            )
+            return AppResponse(type=ResponseType.TEXT, text=text)
+
+        return AppResponse(type=ResponseType.TEXT, text=UNKNOWN_COMMAND)
+    except Exception:
+        logger.exception("Unexpected error in symbol lookup")
+        return AppResponse(type=ResponseType.TEXT, text=UNEXPECTED_ERROR)

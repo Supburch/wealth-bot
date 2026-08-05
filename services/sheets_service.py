@@ -1,5 +1,6 @@
 import json
 import logging
+from typing import Sequence
 import gspread
 from google.oauth2.service_account import Credentials
 from config import settings
@@ -53,6 +54,48 @@ def get_master_sheet_records(sheet_title: str) -> list[dict]:
     sh = client.open_by_key(settings.MASTER_SPREADSHEET_ID)
     ws = sh.worksheet(sheet_title)
     return ws.get_all_records()
+
+
+def get_raw_range(spreadsheet_id: str, a1_range: str) -> list[list[str]]:
+    """
+    Read raw cell values using A1 notation (e.g. 'Portfolio!A2:D').
+    Returns a 2-D list of strings with no header processing.
+    Used by PortfolioRepository via the SheetsGateway adapter in build_router().
+    """
+    client = _get_client()
+    sh = client.open_by_key(spreadsheet_id)
+    if "!" in a1_range:
+        sheet_title, cell_range = a1_range.split("!", 1)
+        ws = sh.worksheet(sheet_title)
+        return ws.get(cell_range)
+    ws = sh.worksheet(a1_range)
+    return ws.get_all_values()
+
+
+def batch_update_values(
+    spreadsheet_id: str,
+    sheet_title: str,
+    rows: Sequence[Sequence[str | int]],
+) -> None:
+    """Replace a result sheet with the supplied rows using one batch update."""
+    client = _get_client()
+    sh = client.open_by_key(spreadsheet_id)
+    try:
+        ws = sh.worksheet(sheet_title)
+    except gspread.WorksheetNotFound:
+        ws = sh.add_worksheet(title=sheet_title, rows=max(len(rows), 1), cols=9)
+
+    row_count = max(len(rows), 1)
+    col_count = max((len(row) for row in rows), default=1)
+    if ws.row_count < row_count or ws.col_count < col_count:
+        ws.resize(rows=max(ws.row_count, row_count), cols=max(ws.col_count, col_count))
+
+    ws.clear()
+    if rows:
+        ws.batch_update(
+            [{"range": "A1", "values": [list(row) for row in rows]}],
+            value_input_option="RAW",
+        )
 
 
 async def check_sheets_health() -> bool:

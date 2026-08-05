@@ -9,8 +9,8 @@ logger = logging.getLogger(__name__)
 class HelpHandler:
     async def handle(self, user_id: str) -> AppResponse:
         try:
-            text = build_help_text()
-            return AppResponse(type=ResponseType.TEXT, text=text)
+            output = build_help_text()
+            return AppResponse(type=ResponseType.TEXT, text=output)
         except Exception:
             logger.exception("Unexpected error in HelpHandler")
             return AppResponse(type=ResponseType.TEXT, text=UNEXPECTED_ERROR)

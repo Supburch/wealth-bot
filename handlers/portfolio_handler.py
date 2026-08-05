@@ -31,12 +31,11 @@ class PortfolioHandler:
             if portfolio.is_empty:
                 return AppResponse(type=ResponseType.TEXT, text=EMPTY_PORTFOLIO)
 
-            contents = build_portfolio_flex(portfolio)
+            output = build_portfolio_flex(portfolio)
             return AppResponse(
                 type=ResponseType.RICH,
                 alt_text="Portfolio Summary",
-                text="Portfolio Summary",
-                contents=contents
+                contents=output,
             )
 
         except PortfolioReadError:

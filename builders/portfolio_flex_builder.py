@@ -1,8 +1,9 @@
 from decimal import Decimal
-from models.portfolio import PortfolioSummary
+from models.portfolio import PortfolioHoldings
 
-def build_portfolio_flex(portfolio: PortfolioSummary) -> dict:
-    """Build Flex Message contents dict from PortfolioSummary."""
+
+def build_portfolio_flex(portfolio: PortfolioHoldings) -> dict:
+    """Return raw Flex Message contents dict. Does not wrap AppResponse."""
     sign = "+" if portfolio.total_profit >= 0 else ""
     profit_color = "#2ecc71" if portfolio.total_profit >= 0 else "#e74c3c"
 

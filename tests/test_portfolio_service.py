@@ -121,3 +121,13 @@ async def test_get_top_holdings_sorted(mock_user):
 
     weights = [h.weight for h in result]
     assert weights == sorted(weights, reverse=True), "Holdings should be sorted by weight desc"
+
+
+def test_parse_float_helper():
+    from services.portfolio_service import _parse_float
+    assert _parse_float("฿7,450,000") == 7450000.0
+    assert _parse_float(" $1,234.56 ") == 1234.56
+    assert _parse_float("20.16%") == 20.16
+    assert _parse_float("") == 0.0
+    assert _parse_float("  ") == 0.0
+

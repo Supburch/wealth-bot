@@ -32,10 +32,8 @@ async def _fetch_all_users() -> Dict[str, UserInfo]:
 
 async def get_user(user_id: str) -> UserInfo | None:
     """Retrieve UserInfo by LINE_USER_ID. Uses cache internally."""
-    print(f"กำลังเช็กข้อมูลของ User: {user_id}", flush=True)
-    logger.info(f"กำลังเช็กข้อมูลของ User: {user_id}")
+    logger.info(f"Fetching user info for: {user_id}")
     users = await _fetch_all_users()
     user_mapping_result = users.get(user_id)
-    print(f"ผลการดึงข้อมูล: {user_mapping_result}", flush=True)
-    logger.info(f"ผลการดึงข้อมูล: {user_mapping_result}")
+    logger.info(f"User lookup result: {user_mapping_result}")
     return user_mapping_result

@@ -1,3 +1,6 @@
+# DEPRECATED: This module is superseded by services/command_router.py + handlers/.
+# It is kept temporarily to maintain test_line_commands.py coverage.
+# Schedule for removal after test_handlers.py achieves full command parity.
 import logging
 from config import settings
 from services.portfolio_service import (
