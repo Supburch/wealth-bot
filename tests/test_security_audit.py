@@ -63,10 +63,13 @@ def test_gitignore_excludes_env_and_credential_json():
 
 def test_no_secret_files_tracked_in_git():
     tracked = _git_tracked_files()
+    # .env.example is a tracked template with placeholder values only.
+    allowed_templates = {".env.example"}
     violations = [
         path
         for path in tracked
-        if any(re.search(pattern, path, re.IGNORECASE) for pattern in SECRET_FILE_PATTERNS)
+        if path not in allowed_templates
+        and any(re.search(pattern, path, re.IGNORECASE) for pattern in SECRET_FILE_PATTERNS)
         and "package.json" not in path
     ]
     assert violations == [], f"Secret-like files tracked in git: {violations}"
