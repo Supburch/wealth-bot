@@ -28,7 +28,7 @@ class ValidateHandler:
 
             summary = self.validation_service.validate_portfolio(user_info.spreadsheet_id)
             if self.writeback_service:
-                self.writeback_service.write_validation_result(
+                await self.writeback_service.write_validation_result(
                     user_info.spreadsheet_id,
                     summary,
                 )

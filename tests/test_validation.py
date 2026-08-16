@@ -9,7 +9,7 @@ from handlers.validate_handler import ValidateHandler
 from models.validation import ValidationIssue, ValidationResult, ValidationSummary
 from models.response import AppResponse
 from core.enums import ResponseType
-from core.messages import ACCESS_DENIED
+from core.messages import ACCESS_DENIED, UNEXPECTED_ERROR
 from models.user import UserInfo
 from repositories.validation_result_repository import GoogleSheetResultRepository
 from services.writeback_service import WriteBackService
@@ -146,12 +146,14 @@ def test_google_sheet_result_repository_uses_configured_sheet():
     )
 
 
-def test_writeback_service_returns_saved_result():
+@pytest.mark.asyncio
+async def test_writeback_service_returns_saved_result():
     repo = MagicMock()
     service = WriteBackService(repo)
     summary = ValidationSummary(total_rows=1, valid_rows=1, invalid_rows=0, issues=[])
 
-    result = service.write_validation_result("sheet_1", summary)
+    with patch("services.writeback_service.check_and_set_idempotency", AsyncMock(return_value=False)):
+        result = await service.write_validation_result("sheet_1", summary)
 
     assert result.spreadsheet_id == "sheet_1"
     assert result.summary == summary
@@ -199,7 +201,7 @@ async def test_validate_handler_writes_result_when_configured():
     mock_validation_service = MagicMock()
     summary = ValidationSummary(total_rows=5, valid_rows=5, invalid_rows=0, issues=[])
     mock_validation_service.validate_portfolio.return_value = summary
-    mock_writeback_service = MagicMock()
+    mock_writeback_service = AsyncMock()
     handler = ValidateHandler(mock_validation_service, mock_writeback_service)
 
     with patch("handlers.validate_handler.get_user", AsyncMock(return_value=MOCK_USER)):
@@ -210,6 +212,22 @@ async def test_validate_handler_writes_result_when_configured():
         MOCK_USER.spreadsheet_id,
         summary,
     )
+
+
+@pytest.mark.asyncio
+async def test_validate_handler_writeback_failure_returns_unexpected_error():
+    mock_validation_service = MagicMock()
+    summary = ValidationSummary(total_rows=1, valid_rows=1, invalid_rows=0, issues=[])
+    mock_validation_service.validate_portfolio.return_value = summary
+    mock_writeback_service = AsyncMock()
+    mock_writeback_service.write_validation_result.side_effect = RuntimeError("write failed")
+    handler = ValidateHandler(mock_validation_service, mock_writeback_service)
+
+    with patch("handlers.validate_handler.get_user", AsyncMock(return_value=MOCK_USER)):
+        result = await handler.handle("U_ALLOWED")
+
+    assert result.type == ResponseType.TEXT
+    assert result.text == UNEXPECTED_ERROR
 
 
 @pytest.mark.asyncio

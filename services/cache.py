@@ -65,3 +65,26 @@ def get_last_refresh_time() -> str:
     if _last_refresh_time is None:
         return "Never"
     return _last_refresh_time.strftime("%H:%M:%S")
+
+
+async def check_and_set_idempotency(key: str, ttl: int = 300) -> bool:
+    """
+    Checks if an idempotency key exists and is valid.
+    If it exists, returns True (meaning duplicate request).
+    If it does not exist, sets it and returns False (meaning first time).
+    """
+    async with _cache_lock:
+        entry = _cache.get(key)
+        if entry and time.time() - entry[0] < ttl:
+            return True
+
+        _cache[key] = (time.time(), True)
+        global _last_refresh_time
+        _last_refresh_time = datetime.now(BKK_TZ)
+        return False
+
+
+async def clear_idempotency(key: str) -> None:
+    """Remove an idempotency key so a failed write can be retried later."""
+    async with _cache_lock:
+        _cache.pop(key, None)
