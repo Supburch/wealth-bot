@@ -1,6 +1,6 @@
 import logging
 from typing import Protocol, List
-from core.config import AppConfig
+from core.sheet_config import AppConfig
 from core.exceptions import PortfolioReadError
 from models.portfolio import PortfolioRow
 

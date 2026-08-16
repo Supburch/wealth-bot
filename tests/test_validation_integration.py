@@ -3,7 +3,7 @@ import time
 
 import pytest
 
-from core.config import AppConfig
+from core.sheet_config import AppConfig
 from models.validation import ValidationIssue, ValidationResult, ValidationSummary
 from repositories.validation_result_repository import GoogleSheetResultRepository
 from services.writeback_service import WriteBackService

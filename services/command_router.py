@@ -59,7 +59,7 @@ def build_router(app_version: str = "1.0.0") -> "CommandRouter":
     from repositories.portfolio_repository import PortfolioRepository
     from repositories.validation_result_repository import GoogleSheetResultRepository
     from services.sheets_service import batch_update_values, get_raw_range
-    from core.config import AppConfig
+    from core.sheet_config import AppConfig
 
     config = AppConfig()
 

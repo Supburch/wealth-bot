@@ -1,7 +1,7 @@
 import logging
 from typing import Protocol, Sequence
 
-from core.config import AppConfig
+from core.sheet_config import AppConfig
 from models.validation import ValidationResult
 
 logger = logging.getLogger(__name__)
