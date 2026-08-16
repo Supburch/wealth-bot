@@ -2,6 +2,7 @@ import logging
 from typing import Protocol, Sequence
 
 from core.sheet_config import AppConfig
+from core.redaction import mask_id
 from models.validation import ValidationResult
 
 logger = logging.getLogger(__name__)
@@ -41,6 +42,6 @@ class GoogleSheetResultRepository:
         except Exception:
             logger.exception(
                 "Failed to write validation result",
-                extra={"spreadsheet_id": result.spreadsheet_id},
+                extra={"spreadsheet_id": mask_id(result.spreadsheet_id)},
             )
             raise

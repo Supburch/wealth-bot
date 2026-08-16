@@ -79,13 +79,17 @@ class ValidationService:
                     )
                     
         except PortfolioReadError as e:
-            logger.error("Failed to read portfolio for validation", extra={"error": str(e)})
+            logger.error(
+                "Failed to read portfolio for validation: %s",
+                type(e).__name__,
+                exc_info=True,
+            )
             # If we can't even read the sheet, it's a fatal validation error
             issues.append(
                 ValidationIssue(
                     row_index=0,
                     symbol="SYSTEM",
-                    error_message=f"Failed to read Google Sheet: {e}"
+                    error_message="Failed to read Google Sheet"
                 )
             )
             # We don't know total rows, so just return what we have
@@ -95,7 +99,7 @@ class ValidationService:
                 invalid_rows=1,
                 issues=issues
             )
-        except Exception as e:
+        except Exception:
             logger.exception("Unexpected error during validation")
             issues.append(
                 ValidationIssue(

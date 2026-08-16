@@ -1,5 +1,6 @@
 import logging
 from typing import Dict
+from core.redaction import mask_id
 from models.user import UserInfo
 from services.sheets_service import get_master_sheet_records
 from services.cache import cached
@@ -26,14 +27,22 @@ async def _fetch_all_users() -> Dict[str, UserInfo]:
             )
         return users
     except Exception as e:
-        logger.error(f"Failed to fetch users from Master Sheet: {e}")
+        logger.error(
+            "Failed to fetch users from Master Sheet: %s",
+            type(e).__name__,
+            exc_info=True,
+        )
         return {}
 
 
 async def get_user(user_id: str) -> UserInfo | None:
     """Retrieve UserInfo by LINE_USER_ID. Uses cache internally."""
-    logger.info(f"Fetching user info for: {user_id}")
+    logger.debug("User lookup: %s", mask_id(user_id))
     users = await _fetch_all_users()
     user_mapping_result = users.get(user_id)
-    logger.info(f"User lookup result: {user_mapping_result}")
+    logger.debug(
+        "User lookup for %s: %s",
+        mask_id(user_id),
+        "found" if user_mapping_result else "not found",
+    )
     return user_mapping_result

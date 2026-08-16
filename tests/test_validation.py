@@ -81,7 +81,7 @@ def test_validation_service_read_error():
     assert summary.is_valid is False
     assert summary.invalid_rows == 1
     assert summary.issues[0].symbol == "SYSTEM"
-    assert "Mock Read Error" in summary.issues[0].error_message
+    assert "Failed to read Google Sheet" in summary.issues[0].error_message
 
 
 def test_validation_result_to_rows_for_valid_summary():

@@ -3,6 +3,7 @@ import hashlib
 import json
 import logging
 
+from core.redaction import mask_id
 from models.validation import ValidationResult, ValidationSummary
 from repositories.validation_result_repository import ValidationResultRepository
 from services.cache import check_and_set_idempotency, clear_idempotency
@@ -31,10 +32,11 @@ class WriteBackService:
         summary: ValidationSummary,
     ) -> ValidationResult | None:
         key = self._generate_idempotency_key(spreadsheet_id, summary)
+        spreadsheet_ref = mask_id(spreadsheet_id)
         is_duplicate = await check_and_set_idempotency(key, ttl=300)
         
         if is_duplicate:
-            logger.info("Idempotency hit: skipping writeback for %s", spreadsheet_id)
+            logger.info("Idempotency hit: skipping writeback for %s", spreadsheet_ref)
             return None
 
         result = ValidationResult(spreadsheet_id=spreadsheet_id, summary=summary)
@@ -49,7 +51,7 @@ class WriteBackService:
                     asyncio.to_thread(self.result_repository.save_result, result),
                     timeout=timeout_seconds,
                 )
-                logger.info("Successfully wrote validation result for %s", spreadsheet_id)
+                logger.info("Successfully wrote validation result for %s", spreadsheet_ref)
                 return result
             except TimeoutError:
                 # asyncio.TimeoutError is deprecated in 3.11+ in favor of built-in TimeoutError
@@ -57,10 +59,10 @@ class WriteBackService:
                     "Writeback timeout (attempt %d/%d) for %s",
                     attempt,
                     max_retries,
-                    spreadsheet_id,
+                    spreadsheet_ref,
                 )
                 if attempt == max_retries:
-                    logger.error("All writeback retries failed for %s", spreadsheet_id)
+                    logger.error("All writeback retries failed for %s", spreadsheet_ref)
                     await clear_idempotency(key)
                     raise
                 await asyncio.sleep(2 ** (attempt - 1))
@@ -69,11 +71,11 @@ class WriteBackService:
                     "Writeback failed (attempt %d/%d) for %s: %s",
                     attempt,
                     max_retries,
-                    spreadsheet_id,
-                    e,
+                    spreadsheet_ref,
+                    type(e).__name__,
                 )
                 if attempt == max_retries:
-                    logger.error("All writeback retries failed for %s", spreadsheet_id)
+                    logger.error("All writeback retries failed for %s", spreadsheet_ref)
                     await clear_idempotency(key)
                     raise
                 await asyncio.sleep(2 ** (attempt - 1))

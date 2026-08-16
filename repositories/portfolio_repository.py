@@ -2,6 +2,7 @@ import logging
 from typing import Protocol, List
 from core.sheet_config import AppConfig
 from core.exceptions import PortfolioReadError
+from core.redaction import mask_id
 from models.portfolio import PortfolioRow
 
 logger = logging.getLogger(__name__)
@@ -39,10 +40,9 @@ class PortfolioRepository:
             return rows
         except Exception as e:
             logger.error(
-                f"Failed to fetch portfolio rows: {e}",
-                extra={"spreadsheet_id": spreadsheet_id},
+                "Failed to fetch portfolio rows: %s",
+                type(e).__name__,
+                extra={"spreadsheet_id": mask_id(spreadsheet_id)},
                 exc_info=True,
             )
-            raise PortfolioReadError(
-                f"Error reading portfolio data (spreadsheet_id={spreadsheet_id})"
-            ) from e
+            raise PortfolioReadError("Error reading portfolio data") from e

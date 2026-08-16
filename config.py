@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     SPREADSHEET_ID: str = ""
 
     APP_VERSION: str = "1.0.0"
+    LOG_LEVEL: str = "INFO"
 
     @field_validator("GOOGLE_CREDENTIALS_JSON")
     @classmethod

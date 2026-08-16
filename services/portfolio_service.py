@@ -20,6 +20,7 @@ from typing import Generic, TypeVar
 from pydantic import ValidationError
 
 from core.exceptions import PortfolioParseError, PortfolioReadError
+from core.messages import PORTFOLIO_PARSE_ERROR, PORTFOLIO_READ_ERROR
 from models.portfolio import (
     HoldingBreakdown,
     PortfolioHoldings,
@@ -96,7 +97,7 @@ class PortfolioService:
                 except (InvalidOperation, ValidationError, ValueError) as e:
                     logger.warning(
                         "Skipping invalid row",
-                        extra={"symbol": row.symbol, "error": str(e)},
+                        extra={"error_type": type(e).__name__},
                     )
                     if strict:
                         raise PortfolioParseError(
@@ -105,10 +106,10 @@ class PortfolioService:
 
             return ServiceResult(data=PortfolioHoldings(items=items))
 
-        except PortfolioReadError as e:
-            return ServiceResult(error=str(e))
-        except PortfolioParseError as e:
-            return ServiceResult(error=str(e))
+        except PortfolioReadError:
+            return ServiceResult(error=PORTFOLIO_READ_ERROR)
+        except PortfolioParseError:
+            return ServiceResult(error=PORTFOLIO_PARSE_ERROR)
         except Exception:
             logger.exception("Unexpected error in PortfolioService.get_portfolio")
             return ServiceResult(error="Internal service error")
@@ -163,7 +164,7 @@ async def _fetch_holdings_index(user_info: UserInfo) -> dict[str, HoldingBreakdo
         except (ValueError, KeyError) as e:
             logger.warning(
                 "Skipping invalid holding row",
-                extra={"symbol": symbol, "error": str(e)},
+                extra={"error_type": type(e).__name__},
             )
     return index
 
@@ -207,9 +208,6 @@ async def get_asset_allocation(user_info: UserInfo) -> dict[str, Decimal]:
         try:
             result[k] = Decimal(str(v).replace(",", "").strip())
         except Exception:
-            logger.warning(
-                "Skipping invalid allocation entry",
-                extra={"key": k, "value": v},
-            )
+            logger.warning("Skipping invalid allocation entry")
     return result
 

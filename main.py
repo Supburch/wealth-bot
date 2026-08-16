@@ -12,13 +12,14 @@ from linebot.v3.webhooks import MessageEvent, TextMessageContent
 
 from config import settings
 from core.enums import ResponseType
+from core.redaction import mask_id
 from models.health import HealthDto
 from models.response import AppResponse
 from services.command_router import build_router
 from services.sheets_service import check_sheets_health
 from services.cache import get_cache_entries_count
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO))
 logger = logging.getLogger(__name__)
 
 START_TIME = time.time()
@@ -80,7 +81,8 @@ async def line_webhook(request: Request, x_line_signature: str = Header(None)):
 
             user_id = event.source.user_id
             text = event.message.text
-            logger.info(f"Received message from {user_id}: {text!r}")
+            logger.info("Received message from %s", mask_id(user_id))
+            logger.debug("Message text: %r", text)
 
             response = await router.route_command(user_id, text)
             line_bot_api.reply_message(

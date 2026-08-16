@@ -104,5 +104,9 @@ async def check_sheets_health() -> bool:
         client.open_by_key(settings.MASTER_SPREADSHEET_ID)
         return True
     except Exception as e:
-        logger.error(f"Google Sheets health check failed: {e}")
+        logger.error(
+            "Google Sheets health check failed: %s",
+            type(e).__name__,
+            exc_info=True,
+        )
         return False
