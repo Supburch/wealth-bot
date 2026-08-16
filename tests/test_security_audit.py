@@ -32,6 +32,26 @@ LOGGING_LEAK_PATTERNS = (
     (r"logger\.(?:info|debug|warning|error|exception)\([^)]*private_key", "private key in log call"),
 )
 
+# P2.2: user/identifier PII leaks in operational logs.
+PII_LOG_PATTERNS = (
+    (r"logger\.(?:info|debug|warning|error|exception)\([^)]*\{user_id\}", "raw user_id interpolated in log call"),
+    (r"logger\.(?:info|debug|warning|error|exception)\([^)]*\{user_mapping_result\}", "raw user_mapping_result interpolated in log call"),
+    (r"logger\.(?:info|debug|warning|error|exception)\([^)]*\{spreadsheet_id\}", "raw spreadsheet_id interpolated in log call"),
+    (r"logger\.(?:info|debug|warning|error|exception)\([^)]*, user_id\s*[,)]", "raw user_id passed as log argument"),
+    (r"logger\.(?:info|debug|warning|error|exception)\([^)]*, spreadsheet_id\s*[,)]", "raw spreadsheet_id passed as log argument"),
+    (r"extra=\{\"spreadsheet_id\":\s*spreadsheet_id\s*\}", "raw spreadsheet_id in log extra dict"),
+    (r"logger\.(?:info|debug|warning|error|exception)\([^)]*\{e\}", "raw exception interpolated in log call"),
+    (r"logger\.(?:info|debug|warning|error|exception)\([^)]*, e\s*[,)]", "raw exception passed as log argument"),
+    (r"logger\.(?:info|debug|warning|error|exception)\([^)]*str\(e\)", "raw str(e) in log call"),
+)
+
+# P2.2: identifiers/raw exception details leaking into user-facing messages.
+USER_FACING_LEAK_PATTERNS = (
+    (r"spreadsheet_id\s*=\s*\{spreadsheet_id\}", "spreadsheet_id in user-facing message"),
+    (r"error_message\s*=\s*f\"[^\"]*\{", "interpolated value in user-facing error_message"),
+    (r"error\s*=\s*str\(e\)", "raw str(e) in user-facing error result"),
+)
+
 SCAN_IGNORE_DIRS = {".git", ".venv", "venv", "__pycache__", ".pytest_cache"}
 
 
@@ -87,6 +107,26 @@ def test_source_has_no_hardcoded_secrets(pattern: str, label: str):
 
 @pytest.mark.parametrize("pattern,label", LOGGING_LEAK_PATTERNS)
 def test_logging_calls_do_not_leak_secrets(pattern: str, label: str):
+    violations: list[str] = []
+    for path in _iter_python_files():
+        content = path.read_text(encoding="utf-8")
+        if re.search(pattern, content):
+            violations.append(f"{path.relative_to(ROOT)} ({label})")
+    assert violations == []
+
+
+@pytest.mark.parametrize("pattern,label", PII_LOG_PATTERNS)
+def test_logging_calls_do_not_leak_pii(pattern: str, label: str):
+    violations: list[str] = []
+    for path in _iter_python_files():
+        content = path.read_text(encoding="utf-8")
+        if re.search(pattern, content):
+            violations.append(f"{path.relative_to(ROOT)} ({label})")
+    assert violations == []
+
+
+@pytest.mark.parametrize("pattern,label", USER_FACING_LEAK_PATTERNS)
+def test_user_facing_errors_do_not_leak_pii(pattern: str, label: str):
     violations: list[str] = []
     for path in _iter_python_files():
         content = path.read_text(encoding="utf-8")
