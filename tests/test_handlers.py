@@ -79,6 +79,35 @@ async def test_holdings_handler_unauthorized():
     assert result.text == ACCESS_DENIED
 
 
+# ── PortfolioHandler ───────────────────────────────────────────────────────────
+
+async def test_portfolio_handler_returns_rich():
+    from handlers.portfolio_handler import PortfolioHandler
+    from services.portfolio_service import ServiceResult
+    portfolio = MagicMock()
+    portfolio.is_empty = False
+    mock_service = MagicMock()
+    mock_service.get_portfolio.return_value = ServiceResult(data=portfolio)
+    with patch("handlers.portfolio_handler.get_user", AsyncMock(return_value=MOCK_USER)), \
+         patch("handlers.portfolio_handler.build_portfolio_flex", return_value={"type": "bubble"}):
+        result = await PortfolioHandler(mock_service).handle(ALLOWED_USER)
+    assert result.type == ResponseType.RICH
+    assert result.alt_text == "Portfolio Summary"
+    assert result.contents is not None
+
+
+# ── WealthSummaryHandler ───────────────────────────────────────────────────────
+
+async def test_wealth_summary_handler_returns_text():
+    from handlers.wealth_summary_handler import WealthSummaryHandler
+    with patch("handlers.wealth_summary_handler.get_user", AsyncMock(return_value=MOCK_USER)), \
+         patch("handlers.wealth_summary_handler.get_wealth_summary", AsyncMock(return_value=MOCK_WEALTH)):
+        result = await WealthSummaryHandler().handle(ALLOWED_USER)
+    assert result.type == ResponseType.TEXT
+    assert "Wealth Summary" in result.text
+    assert "AAPL" in result.text
+
+
 # ── TodayHandler ──────────────────────────────────────────────────────────────
 
 async def test_today_handler_returns_rich():
