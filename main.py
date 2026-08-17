@@ -65,11 +65,21 @@ async def health_check():
 
 @app.post("/callback")
 async def line_webhook(request: Request, x_line_signature: str = Header(None)):
+    # LINE always sends this header. When it is missing, the request did not
+    # come from LINE, so fail closed with 401. Guarding here also avoids a 500:
+    # the SDK raises AttributeError (not InvalidSignatureError) when signature
+    # is None.
+    if not x_line_signature:
+        raise HTTPException(status_code=401, detail="Missing signature")
+
     body = await request.body()
+    if not body:
+        raise HTTPException(status_code=400, detail="Empty body")
+
     try:
-        events = parser.parse(body.decode(), x_line_signature)
+        events = parser.parse(body.decode("utf-8"), x_line_signature)
     except InvalidSignatureError:
-        raise HTTPException(status_code=400, detail="Invalid signature")
+        raise HTTPException(status_code=401, detail="Invalid signature")
 
     with ApiClient(line_config) as api_client:
         line_bot_api = MessagingApi(api_client)
