@@ -15,6 +15,11 @@ SCOPES = [
     "https://www.googleapis.com/auth/drive",
 ]
 
+# Per-HTTP-request timeout (connect + read). gspread's HTTPClient passes
+# `timeout=None` (wait forever) to requests by default; this bounds every call.
+# Reads are further bounded per logical call by cache.FETCH_TIMEOUT.
+HTTP_TIMEOUT = 10.0
+
 
 def _get_client() -> gspread.Client:
     global _client
@@ -22,6 +27,7 @@ def _get_client() -> gspread.Client:
         creds_dict = json.loads(settings.GOOGLE_CREDENTIALS_JSON)
         creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
         _client = gspread.authorize(creds)
+        _client.http_client.timeout = HTTP_TIMEOUT
         logger.info("Google Sheets client initialized")
     return _client
 

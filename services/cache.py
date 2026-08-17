@@ -10,6 +10,8 @@ logger = logging.getLogger(__name__)
 
 BKK_TZ = ZoneInfo("Asia/Bangkok")
 CACHE_TTL = 300  # 5 นาที
+FETCH_TIMEOUT = 7.0  # seconds; per logical read (all HTTP hops); loosened until read-retry (P3.1d) lands
+LOCK_WAIT_TIMEOUT = 14.0  # seconds; max time parked on a per-key lock (2× FETCH_TIMEOUT for coalescing)
 
 _cache: dict = {}
 _key_locks: dict = {}
@@ -27,25 +29,39 @@ def cached(key_prefix: str, ttl: int = CACHE_TTL):
         async def wrapper(*args, **kwargs):
             cache_key = _generate_cache_key(key_prefix, args, kwargs)
 
+            # Fast path: serve a fresh cache hit without contending for the key lock.
+            async with _cache_lock:
+                entry = _cache.get(cache_key)
+                if entry and time.time() - entry[0] < ttl:
+                    return entry[1]
+
             async with _cache_lock:
                 if cache_key not in _key_locks:
                     _key_locks[cache_key] = asyncio.Lock()
                 key_lock = _key_locks[cache_key]
 
-            async with key_lock:
-                async with _cache_lock:
-                    entry = _cache.get(cache_key)
-                    if entry and time.time() - entry[0] < ttl:
-                        return entry[1]
+            try:
+                async with asyncio.timeout(LOCK_WAIT_TIMEOUT):
+                    async with key_lock:
+                        # Re-check under the lock: a waiter may have refreshed it.
+                        async with _cache_lock:
+                            entry = _cache.get(cache_key)
+                            if entry and time.time() - entry[0] < ttl:
+                                return entry[1]
 
-                result = await func(*args, **kwargs)
+                        result = await asyncio.wait_for(
+                            func(*args, **kwargs), timeout=FETCH_TIMEOUT
+                        )
 
-                async with _cache_lock:
-                    _cache[cache_key] = (time.time(), result)
-                    global _last_refresh_time
-                    _last_refresh_time = datetime.now(BKK_TZ)
+                        async with _cache_lock:
+                            _cache[cache_key] = (time.time(), result)
+                            global _last_refresh_time
+                            _last_refresh_time = datetime.now(BKK_TZ)
 
-                return result
+                        return result
+            except TimeoutError:
+                logger.warning("Cached fetch timed out (key_prefix=%s)", key_prefix)
+                raise
         return wrapper
     return decorator
 
