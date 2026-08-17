@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import Dict
 from core.redaction import mask_id
@@ -12,7 +13,7 @@ logger = logging.getLogger(__name__)
 async def _fetch_all_users() -> Dict[str, UserInfo]:
     """Fetch user mapping from Master Spreadsheet and return dict keyed by LINE_USER_ID"""
     try:
-        records = get_master_sheet_records("Users")
+        records = await asyncio.to_thread(get_master_sheet_records, "Users")
         users = {}
         for row in records:
             user_id = str(row.get("LINE_USER_ID", "")).strip()

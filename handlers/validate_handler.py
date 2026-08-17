@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from models.response import AppResponse
 from core.enums import ResponseType
@@ -26,7 +27,9 @@ class ValidateHandler:
             if not user_info or not user_info.enabled:
                 return AppResponse(type=ResponseType.TEXT, text=ACCESS_DENIED)
 
-            summary = self.validation_service.validate_portfolio(user_info.spreadsheet_id)
+            summary = await asyncio.to_thread(
+                self.validation_service.validate_portfolio, user_info.spreadsheet_id
+            )
             if self.writeback_service:
                 await self.writeback_service.write_validation_result(
                     user_info.spreadsheet_id,

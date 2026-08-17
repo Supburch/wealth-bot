@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 from typing import Sequence
@@ -101,7 +102,7 @@ def batch_update_values(
 async def check_sheets_health() -> bool:
     try:
         client = _get_client()
-        client.open_by_key(settings.MASTER_SPREADSHEET_ID)
+        await asyncio.to_thread(client.open_by_key, settings.MASTER_SPREADSHEET_ID)
         return True
     except Exception as e:
         logger.error(

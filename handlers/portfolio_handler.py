@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from models.response import AppResponse
 from core.enums import ResponseType
@@ -22,7 +23,9 @@ class PortfolioHandler:
             if not user_info or not user_info.enabled:
                 return AppResponse(type=ResponseType.TEXT, text=ACCESS_DENIED)
 
-            result = self.portfolio_service.get_portfolio(user_info.spreadsheet_id)
+            result = await asyncio.to_thread(
+                self.portfolio_service.get_portfolio, user_info.spreadsheet_id
+            )
 
             if not result.is_success:
                 return AppResponse(type=ResponseType.TEXT, text=result.error or UNEXPECTED_ERROR)

@@ -12,6 +12,7 @@ Two access patterns co-exist in this module:
    HoldingsBreakdown, AssetAllocation) and return presentation DTOs.
    Used by the new handler-based architecture.
 """
+import asyncio
 import logging
 from decimal import Decimal, InvalidOperation
 from enum import IntEnum
@@ -120,7 +121,7 @@ class PortfolioService:
 @cached("portfolio_summary")
 async def get_portfolio_summary(user_info: UserInfo) -> PortfolioSummary:
     """Read pre-computed summary from 'PortfolioSummary' sheet (Metric|Value format)."""
-    data = get_sheet_as_dict(user_info.spreadsheet_id, "PortfolioSummary")
+    data = await asyncio.to_thread(get_sheet_as_dict, user_info.spreadsheet_id, "PortfolioSummary")
     return PortfolioSummary(
         portfolio_value=_parse_float(data["PortfolioValue"]),
         cost_basis=_parse_float(data["CostBasis"]),
@@ -133,7 +134,7 @@ async def get_portfolio_summary(user_info: UserInfo) -> PortfolioSummary:
 @cached("today_summary")
 async def get_today_summary(user_info: UserInfo) -> TodaySummary:
     """Read pre-computed summary from 'TodaySummary' sheet (Metric|Value format)."""
-    data = get_sheet_as_dict(user_info.spreadsheet_id, "TodaySummary")
+    data = await asyncio.to_thread(get_sheet_as_dict, user_info.spreadsheet_id, "TodaySummary")
     return TodaySummary(
         portfolio_value=_parse_float(data["PortfolioValue"]),
         today_profit=_parse_float(data["TodayProfit"]),
@@ -147,7 +148,7 @@ async def _fetch_holdings_index(user_info: UserInfo) -> dict[str, HoldingBreakdo
     Fetch HoldingsBreakdown records and build an uppercase-symbol → HoldingBreakdown dict.
     Cached per user for O(1) symbol lookup.
     """
-    records = get_sheet_records(user_info.spreadsheet_id, "HoldingsBreakdown")
+    records = await asyncio.to_thread(get_sheet_records, user_info.spreadsheet_id, "HoldingsBreakdown")
     index: dict[str, HoldingBreakdown] = {}
     for row in records:
         symbol = str(row.get("Symbol", "")).strip().upper()
@@ -202,7 +203,7 @@ async def get_asset_allocation(user_info: UserInfo) -> dict[str, Decimal]:
     Read from 'AssetAllocation' sheet (Metric|Value format).
     Returns dict[str, Decimal] placeholder until the sheet schema is confirmed.
     """
-    data = get_sheet_as_dict(user_info.spreadsheet_id, "AssetAllocation")
+    data = await asyncio.to_thread(get_sheet_as_dict, user_info.spreadsheet_id, "AssetAllocation")
     result: dict[str, Decimal] = {}
     for k, v in data.items():
         try:
