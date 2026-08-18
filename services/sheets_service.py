@@ -1,10 +1,17 @@
 import asyncio
 import json
 import logging
-from typing import Sequence
+import time
+from concurrent.futures import ThreadPoolExecutor
+from typing import Any, Callable, Sequence
+
 import gspread
+import requests
+from gspread.exceptions import APIError
 from google.oauth2.service_account import Credentials
+
 from config import settings
+from core.redaction import mask_id
 
 logger = logging.getLogger(__name__)
 
@@ -38,13 +45,84 @@ def invalidate_client():
     logger.info("Google Sheets client invalidated")
 
 
+# ── Read retry (get_sheet_as_dict) ─────────────────────────────────────────────
+# Lives INSIDE cache.FETCH_TIMEOUT (7s): 2 attempts × 2.5s + 0.5s backoff = 5.5s
+# worst case, leaving ~1.5s margin. Only transient failures are retried.
+
+READ_MAX_ATTEMPTS = 2
+READ_ATTEMPT_TIMEOUT = 2.5  # seconds per attempt
+READ_BACKOFF_SECONDS = 0.5  # fixed backoff between attempts
+
+_TRANSIENT_NETWORK_ERRORS = (
+    requests.exceptions.Timeout,
+    requests.exceptions.ConnectionError,
+)
+
+
+def _is_transient_read_error(exc: Exception) -> bool:
+    """True for retry-worthy failures: network timeouts/connection errors and
+    gspread 5xx responses. Auth (401/403), 4xx, and malformed-data errors are
+    NOT retried."""
+    if isinstance(exc, _TRANSIENT_NETWORK_ERRORS):
+        return True
+    if isinstance(exc, APIError):
+        response = getattr(exc, "response", None)
+        status = getattr(response, "status_code", None)
+        return status is not None and 500 <= status < 600
+    return False
+
+
+def _run_with_timeout(op: Callable[[], Any], timeout: float) -> Any:
+    """Run a blocking read in a worker thread with a hard wall-clock timeout."""
+    executor = ThreadPoolExecutor(max_workers=1)
+    try:
+        return executor.submit(op).result(timeout=timeout)
+    finally:
+        executor.shutdown(wait=False, cancel_futures=True)
+
+
 def get_sheet_as_dict(spreadsheet_id: str, sheet_title: str) -> dict[str, str]:
     """อ่าน Sheet แบบ Metric|Value แล้วคืนเป็น dict"""
     client = _get_client()
-    sh = client.open_by_key(spreadsheet_id)
-    ws = sh.worksheet(sheet_title)
-    rows = ws.get_all_values()
-    return {row[0]: row[1] for row in rows[1:] if len(row) >= 2}
+    mask = mask_id(spreadsheet_id)
+
+    def _read() -> dict[str, str]:
+        sh = client.open_by_key(spreadsheet_id)
+        ws = sh.worksheet(sheet_title)
+        rows = ws.get_all_values()
+        return {row[0]: row[1] for row in rows[1:] if len(row) >= 2}
+
+    last_exc: Exception | None = None
+    failure = "unknown"
+    for attempt in range(1, READ_MAX_ATTEMPTS + 1):
+        try:
+            return _run_with_timeout(_read, READ_ATTEMPT_TIMEOUT)
+        except TimeoutError as exc:
+            last_exc = exc
+            failure = "timeout"
+        except Exception as exc:
+            last_exc = exc
+            if not _is_transient_read_error(exc):
+                raise
+            failure = type(exc).__name__
+
+        if attempt == READ_MAX_ATTEMPTS:
+            logger.error(
+                "Sheets read failed after %d attempts for %s: %s",
+                attempt,
+                mask,
+                failure,
+            )
+            raise last_exc
+
+        logger.warning(
+            "Sheets read transient failure (attempt %d/%d) for %s: %s",
+            attempt,
+            READ_MAX_ATTEMPTS,
+            mask,
+            failure,
+        )
+        time.sleep(READ_BACKOFF_SECONDS)
 
 
 def get_sheet_records(spreadsheet_id: str, sheet_title: str) -> list[dict]:
