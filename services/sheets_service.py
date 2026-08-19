@@ -128,17 +128,87 @@ def get_sheet_as_dict(spreadsheet_id: str, sheet_title: str) -> dict[str, str]:
 def get_sheet_records(spreadsheet_id: str, sheet_title: str) -> list[dict]:
     """อ่าน Sheet แบบมี Header Row แล้วคืนเป็น list of dict"""
     client = _get_client()
-    sh = client.open_by_key(spreadsheet_id)
-    ws = sh.worksheet(sheet_title)
-    return ws.get_all_records()
+    mask = mask_id(spreadsheet_id)
+
+    def _read() -> list[dict]:
+        sh = client.open_by_key(spreadsheet_id)
+        ws = sh.worksheet(sheet_title)
+        return ws.get_all_records()
+
+    last_exc: Exception | None = None
+    failure = "unknown"
+    for attempt in range(1, READ_MAX_ATTEMPTS + 1):
+        try:
+            return _run_with_timeout(_read, READ_ATTEMPT_TIMEOUT)
+        except TimeoutError as exc:
+            last_exc = exc
+            failure = "timeout"
+        except Exception as exc:
+            last_exc = exc
+            if not _is_transient_read_error(exc):
+                raise
+            failure = type(exc).__name__
+
+        if attempt == READ_MAX_ATTEMPTS:
+            logger.error(
+                "Sheets read failed after %d attempts for %s: %s",
+                attempt,
+                mask,
+                failure,
+            )
+            raise last_exc
+
+        logger.warning(
+            "Sheets read transient failure (attempt %d/%d) for %s: %s",
+            attempt,
+            READ_MAX_ATTEMPTS,
+            mask,
+            failure,
+        )
+        time.sleep(READ_BACKOFF_SECONDS)
 
 
 def get_master_sheet_records(sheet_title: str) -> list[dict]:
     """อ่าน Sheet แบบมี Header Row จาก Master Spreadsheet"""
     client = _get_client()
-    sh = client.open_by_key(settings.MASTER_SPREADSHEET_ID)
-    ws = sh.worksheet(sheet_title)
-    return ws.get_all_records()
+    mask = mask_id(settings.MASTER_SPREADSHEET_ID)
+
+    def _read() -> list[dict]:
+        sh = client.open_by_key(settings.MASTER_SPREADSHEET_ID)
+        ws = sh.worksheet(sheet_title)
+        return ws.get_all_records()
+
+    last_exc: Exception | None = None
+    failure = "unknown"
+    for attempt in range(1, READ_MAX_ATTEMPTS + 1):
+        try:
+            return _run_with_timeout(_read, READ_ATTEMPT_TIMEOUT)
+        except TimeoutError as exc:
+            last_exc = exc
+            failure = "timeout"
+        except Exception as exc:
+            last_exc = exc
+            if not _is_transient_read_error(exc):
+                raise
+            failure = type(exc).__name__
+
+        if attempt == READ_MAX_ATTEMPTS:
+            logger.error(
+                "Sheets read failed after %d attempts for %s: %s",
+                attempt,
+                mask,
+                failure,
+            )
+            raise last_exc
+
+        logger.warning(
+            "Sheets read transient failure (attempt %d/%d) for %s: %s",
+            attempt,
+            READ_MAX_ATTEMPTS,
+            mask,
+            failure,
+        )
+        time.sleep(READ_BACKOFF_SECONDS)
 
 
 def get_raw_range(spreadsheet_id: str, a1_range: str) -> list[list[str]]:
@@ -148,13 +218,48 @@ def get_raw_range(spreadsheet_id: str, a1_range: str) -> list[list[str]]:
     Used by PortfolioRepository via the SheetsGateway adapter in build_router().
     """
     client = _get_client()
-    sh = client.open_by_key(spreadsheet_id)
-    if "!" in a1_range:
-        sheet_title, cell_range = a1_range.split("!", 1)
-        ws = sh.worksheet(sheet_title)
-        return ws.get(cell_range)
-    ws = sh.worksheet(a1_range)
-    return ws.get_all_values()
+    mask = mask_id(spreadsheet_id)
+
+    def _read() -> list[list[str]]:
+        sh = client.open_by_key(spreadsheet_id)
+        if "!" in a1_range:
+            sheet_title, cell_range = a1_range.split("!", 1)
+            ws = sh.worksheet(sheet_title)
+            return ws.get(cell_range)
+        ws = sh.worksheet(a1_range)
+        return ws.get_all_values()
+
+    last_exc: Exception | None = None
+    failure = "unknown"
+    for attempt in range(1, READ_MAX_ATTEMPTS + 1):
+        try:
+            return _run_with_timeout(_read, READ_ATTEMPT_TIMEOUT)
+        except TimeoutError as exc:
+            last_exc = exc
+            failure = "timeout"
+        except Exception as exc:
+            last_exc = exc
+            if not _is_transient_read_error(exc):
+                raise
+            failure = type(exc).__name__
+
+        if attempt == READ_MAX_ATTEMPTS:
+            logger.error(
+                "Sheets read failed after %d attempts for %s: %s",
+                attempt,
+                mask,
+                failure,
+            )
+            raise last_exc
+
+        logger.warning(
+            "Sheets read transient failure (attempt %d/%d) for %s: %s",
+            attempt,
+            READ_MAX_ATTEMPTS,
+            mask,
+            failure,
+        )
+        time.sleep(READ_BACKOFF_SECONDS)
 
 
 def batch_update_values(
