@@ -314,3 +314,10 @@ Local webhook: expose via ngrok → point LINE Developers Console to `/callback`
 - Complements P2.4a (which removed broad catches from the read/validation layers) and unblocks P2.4b.
 - Added `tests/test_command_router.py` with 4 tests: normal path, unknown command, handler exception → `UNEXPECTED_ERROR`, symbol fallback exception → `UNEXPECTED_ERROR`.
 - Tests: **144 passed, 2 skipped** (full suite).
+
+### 2026-08-20 — P2.4b: remove broad `except Exception` from handlers
+
+- Removed the identical broad `except Exception → UNEXPECTED_ERROR` block from 9 handlers (`admin_handler`, `allocation_handler`, `help_handler`, `holdings_handler`, `symbol_handler`, `today_handler`, `utility_handler`, `validate_handler`, `wealth_summary_handler`); unexpected exceptions now bubble up to `CommandRouter.route_command`'s P2.4c catch-all.
+- Dropped the now-unused `import logging` / `logger` declarations and `UNEXPECTED_ERROR` imports (kept `UNEXPECTED_ERROR` in `admin_handler`, which still uses it for the unknown-command fallback).
+- Updated 2 tests to assert bubbles-up instead of `UNEXPECTED_ERROR`: `test_validation.py::test_validate_handler_writeback_failure_bubbles_up` and `test_user_mapping_service.py::test_handler_bubbles_up_on_fetch_failure`.
+- Tests: **144 passed, 2 skipped** (full suite).
