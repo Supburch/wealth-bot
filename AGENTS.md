@@ -222,6 +222,20 @@ When implementing new features, prefer the **handler + repository** pattern unle
 
 ---
 
+## Known Gaps (Documented, Non-Blocking)
+
+Error handling read paths have inconsistent shapes:
+
+- `repositories/portfolio_repository.py` → typed `PortfolioReadError` (clean).
+- `services/user_mapping_service.py` and the module-level `@cached` portfolio functions → raw exception (untyped).
+- After **P2.4a**, `PortfolioHandler`, `PortfolioService.get_portfolio`, and `ValidationService.validate_portfolio` no longer swallow unexpected exceptions with a broad `except Exception`; they catch only the typed domain errors (`PortfolioReadError`, `PortfolioParseError`) and let anything else bubble up.
+
+**Impact:** the two raw boundaries above can still raise untyped exceptions; until they are wrapped, those transient failures surface as unhandled errors instead of typed domain errors.
+
+**Remaining fix (Deferred — not yet scheduled):** introduce a shared `SheetsReadError`, `raise … from e` at the two raw boundaries, and relabel the misleading log messages. Does not touch cache/retry/lock logic.
+
+---
+
 ## Development Commands
 
 ```bash
@@ -279,3 +293,15 @@ Local webhook: expose via ngrok → point LINE Developers Console to `/callback`
 - Add endpoints that mutate portfolio data
 - Skip repository layer to access Sheets directly from handlers
 - Large refactors without explicit user approval
+
+---
+
+## Progress Log
+
+### 2026-08-19 — P2.4a: remove broad `except Exception` from read paths
+
+- `handlers/portfolio_handler.py`: dropped `except Exception` → `UNEXPECTED_ERROR`; `handle` now catches only `PortfolioReadError` / `PortfolioParseError`, everything else bubbles up.
+- `services/portfolio_service.py`: dropped `except Exception` → `ServiceResult(error="Internal service error")` in `get_portfolio`; domain errors still map to `ServiceResult`.
+- `services/validation_service.py`: dropped the synthetic `ValidationIssue` fallback on unexpected exceptions.
+- Added 4 regression tests (bubbles-up behavior for the three layers + `PortfolioReadError` → `PORTFOLIO_READ_ERROR` mapping).
+- Tests: **140 passed, 2 skipped** (full suite, `tests/test_webhook.py` included: 4 passed).
