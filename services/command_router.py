@@ -6,11 +6,14 @@ Supports a symbol_handler fallback for unrecognized commands (e.g. "AAPL").
 
 Build the production router with build_router().
 """
+import logging
 from typing import Awaitable, Callable
 
 from handlers.base import CommandHandler
 from models.response import AppResponse
-from core.messages import UNKNOWN_COMMAND
+from core.messages import UNKNOWN_COMMAND, UNEXPECTED_ERROR
+
+logger = logging.getLogger(__name__)
 
 
 class CommandRouter:
@@ -30,12 +33,19 @@ class CommandRouter:
 
     async def route_command(self, user_id: str, raw_command: str) -> AppResponse:
         command = self.normalize_command(raw_command)
-        handler = self.routes.get(command)
-        if handler:
-            return await handler.handle(user_id)
-        if self.symbol_handler:
-            return await self.symbol_handler(user_id, command)
-        return AppResponse(text=UNKNOWN_COMMAND)
+        # Single intentional catch-all: handlers/symbol lookups are expected to
+        # catch their own typed domain errors; anything else is a bug and must
+        # not crash the webhook. Log the traceback and return a friendly message.
+        try:
+            handler = self.routes.get(command)
+            if handler:
+                return await handler.handle(user_id)
+            if self.symbol_handler:
+                return await self.symbol_handler(user_id, command)
+            return AppResponse(text=UNKNOWN_COMMAND)
+        except Exception:
+            logger.exception("Unhandled error routing command %r", command)
+            return AppResponse(text=UNEXPECTED_ERROR)
 
 
 def build_router(app_version: str = "1.0.0") -> "CommandRouter":
