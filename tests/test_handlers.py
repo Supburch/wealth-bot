@@ -96,6 +96,16 @@ async def test_portfolio_handler_returns_rich():
     assert result.contents is not None
 
 
+async def test_portfolio_handler_unexpected_error_bubbles_up():
+    """Unexpected service errors must not be masked into a generic fallback (P2.4a)."""
+    from handlers.portfolio_handler import PortfolioHandler
+    mock_service = MagicMock()
+    mock_service.get_portfolio.side_effect = KeyError("boom")
+    with patch("handlers.portfolio_handler.get_user", AsyncMock(return_value=MOCK_USER)):
+        with pytest.raises(KeyError):
+            await PortfolioHandler(mock_service).handle(ALLOWED_USER)
+
+
 # ── WealthSummaryHandler ───────────────────────────────────────────────────────
 
 async def test_wealth_summary_handler_returns_text():

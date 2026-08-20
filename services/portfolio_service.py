@@ -111,9 +111,6 @@ class PortfolioService:
             return ServiceResult(error=PORTFOLIO_READ_ERROR)
         except PortfolioParseError:
             return ServiceResult(error=PORTFOLIO_PARSE_ERROR)
-        except Exception:
-            logger.exception("Unexpected error in PortfolioService.get_portfolio")
-            return ServiceResult(error="Internal service error")
 
 
 # ── Module-level async functions (presentation DTOs) ──────────────────────────

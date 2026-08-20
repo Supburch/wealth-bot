@@ -131,3 +131,29 @@ def test_parse_float_helper():
     assert _parse_float("") == 0.0
     assert _parse_float("  ") == 0.0
 
+
+def test_get_portfolio_read_error_maps_to_message():
+    """PortfolioService.get_portfolio maps PortfolioReadError to the user-facing message."""
+    from unittest.mock import MagicMock
+    from core.exceptions import PortfolioReadError
+    from core.messages import PORTFOLIO_READ_ERROR
+    from services.portfolio_service import PortfolioService
+
+    repo = MagicMock()
+    repo.fetch_portfolio_rows.side_effect = PortfolioReadError("boom")
+    result = PortfolioService(repo).get_portfolio("sheet")
+
+    assert result.is_success is False
+    assert result.error == PORTFOLIO_READ_ERROR
+
+
+def test_get_portfolio_unexpected_error_bubbles_up():
+    """Unexpected exceptions are not swallowed into ServiceResult (P2.4a)."""
+    from unittest.mock import MagicMock
+    from services.portfolio_service import PortfolioService
+
+    repo = MagicMock()
+    repo.fetch_portfolio_rows.side_effect = KeyError("boom")
+    with pytest.raises(KeyError):
+        PortfolioService(repo).get_portfolio("sheet")
+

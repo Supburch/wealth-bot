@@ -84,6 +84,15 @@ def test_validation_service_read_error():
     assert "Failed to read Google Sheet" in summary.issues[0].error_message
 
 
+def test_validation_service_unexpected_error_bubbles_up():
+    """Unexpected exceptions must not be masked as a SYSTEM ValidationIssue (P2.4a)."""
+    repo = MagicMock()
+    repo.fetch_portfolio_rows.side_effect = KeyError("boom")
+    service = ValidationService(repo)
+    with pytest.raises(KeyError):
+        service.validate_portfolio("dummy_id")
+
+
 def test_validation_result_to_rows_for_valid_summary():
     summary = ValidationSummary(total_rows=2, valid_rows=2, invalid_rows=0, issues=[])
     result = ValidationResult(spreadsheet_id="sheet_1", summary=summary, run_id="run_1")

@@ -99,22 +99,6 @@ class ValidationService:
                 invalid_rows=1,
                 issues=issues
             )
-        except Exception:
-            logger.exception("Unexpected error during validation")
-            issues.append(
-                ValidationIssue(
-                    row_index=0,
-                    symbol="SYSTEM",
-                    error_message="Unexpected system error during validation."
-                )
-            )
-            return ValidationSummary(
-                total_rows=total_rows,
-                valid_rows=valid_rows,
-                invalid_rows=invalid_rows + 1,
-                issues=issues
-            )
-
         return ValidationSummary(
             total_rows=total_rows,
             valid_rows=valid_rows,

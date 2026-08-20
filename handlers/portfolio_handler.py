@@ -45,6 +45,3 @@ class PortfolioHandler:
             return AppResponse(type=ResponseType.TEXT, text=PORTFOLIO_READ_ERROR)
         except PortfolioParseError:
             return AppResponse(type=ResponseType.TEXT, text=PORTFOLIO_PARSE_ERROR)
-        except Exception:
-            logger.exception("Unexpected error in PortfolioHandler")
-            return AppResponse(type=ResponseType.TEXT, text=UNEXPECTED_ERROR)
