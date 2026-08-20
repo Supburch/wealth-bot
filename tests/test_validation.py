@@ -9,7 +9,7 @@ from handlers.validate_handler import ValidateHandler
 from models.validation import ValidationIssue, ValidationResult, ValidationSummary
 from models.response import AppResponse
 from core.enums import ResponseType
-from core.messages import ACCESS_DENIED, UNEXPECTED_ERROR
+from core.messages import ACCESS_DENIED
 from models.user import UserInfo
 from repositories.validation_result_repository import GoogleSheetResultRepository
 from services.writeback_service import WriteBackService
@@ -224,7 +224,7 @@ async def test_validate_handler_writes_result_when_configured():
 
 
 @pytest.mark.asyncio
-async def test_validate_handler_writeback_failure_returns_unexpected_error():
+async def test_validate_handler_writeback_failure_bubbles_up():
     mock_validation_service = MagicMock()
     summary = ValidationSummary(total_rows=1, valid_rows=1, invalid_rows=0, issues=[])
     mock_validation_service.validate_portfolio.return_value = summary
@@ -233,10 +233,8 @@ async def test_validate_handler_writeback_failure_returns_unexpected_error():
     handler = ValidateHandler(mock_validation_service, mock_writeback_service)
 
     with patch("handlers.validate_handler.get_user", AsyncMock(return_value=MOCK_USER)):
-        result = await handler.handle("U_ALLOWED")
-
-    assert result.type == ResponseType.TEXT
-    assert result.text == UNEXPECTED_ERROR
+        with pytest.raises(RuntimeError):
+            await handler.handle("U_ALLOWED")
 
 
 @pytest.mark.asyncio

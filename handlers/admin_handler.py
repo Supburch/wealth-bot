@@ -1,12 +1,9 @@
-﻿import logging
-from models.response import AppResponse
+﻿from models.response import AppResponse
 from core.enums import ResponseType
 from core.messages import ACCESS_DENIED, ADMIN_ONLY, UNEXPECTED_ERROR
 from services.cache import clear_cache, get_cache_entries_count, get_last_refresh_time, CACHE_TTL
 from services.sheets_service import check_sheets_health, invalidate_client
 from services.user_mapping_service import get_user
-
-logger = logging.getLogger(__name__)
 
 
 class AdminHandler:
@@ -16,37 +13,33 @@ class AdminHandler:
         self.command = command
 
     async def handle(self, user_id: str) -> AppResponse:
-        try:
-            user_info = await get_user(user_id)
-            if not user_info or not user_info.enabled:
-                return AppResponse(type=ResponseType.TEXT, text=ACCESS_DENIED)
-            if not user_info.is_admin:
-                return AppResponse(type=ResponseType.TEXT, text=ADMIN_ONLY)
+        user_info = await get_user(user_id)
+        if not user_info or not user_info.enabled:
+            return AppResponse(type=ResponseType.TEXT, text=ACCESS_DENIED)
+        if not user_info.is_admin:
+            return AppResponse(type=ResponseType.TEXT, text=ADMIN_ONLY)
 
-            if self.command == "refresh":
-                await clear_cache()
-                return AppResponse(type=ResponseType.TEXT, text="✅ Refresh: ล้าง Cache ข้อมูลเรียบร้อยแล้ว")
+        if self.command == "refresh":
+            await clear_cache()
+            return AppResponse(type=ResponseType.TEXT, text="✅ Refresh: ล้าง Cache ข้อมูลเรียบร้อยแล้ว")
 
-            if self.command == "reload":
-                await clear_cache()
-                invalidate_client()
-                return AppResponse(type=ResponseType.TEXT, text="🔄 Reload: ล้าง Cache และเชื่อมต่อ Google Sheets ใหม่แล้ว")
+        if self.command == "reload":
+            await clear_cache()
+            invalidate_client()
+            return AppResponse(type=ResponseType.TEXT, text="🔄 Reload: ล้าง Cache และเชื่อมต่อ Google Sheets ใหม่แล้ว")
 
-            if self.command == "status":
-                sheets_ok = await check_sheets_health()
-                status_str = "OK" if sheets_ok else "ERROR"
-                text = (
-                    f"📊 System Status\n\n"
-                    f"Sheets: {status_str}\n"
-                    f"Cache: OK\n"
-                    f"Entries: {get_cache_entries_count()}\n"
-                    f"Last Refresh: {get_last_refresh_time()}\n"
-                    f"Cache TTL: {CACHE_TTL}s"
-                )
-                return AppResponse(type=ResponseType.TEXT, text=text)
+        if self.command == "status":
+            sheets_ok = await check_sheets_health()
+            status_str = "OK" if sheets_ok else "ERROR"
+            text = (
+                f"📊 System Status\n\n"
+                f"Sheets: {status_str}\n"
+                f"Cache: OK\n"
+                f"Entries: {get_cache_entries_count()}\n"
+                f"Last Refresh: {get_last_refresh_time()}\n"
+                f"Cache TTL: {CACHE_TTL}s"
+            )
+            return AppResponse(type=ResponseType.TEXT, text=text)
 
-            return AppResponse(type=ResponseType.TEXT, text=UNEXPECTED_ERROR)
+        return AppResponse(type=ResponseType.TEXT, text=UNEXPECTED_ERROR)
 
-        except Exception:
-            logger.exception("Unexpected error in AdminHandler")
-            return AppResponse(type=ResponseType.TEXT, text=UNEXPECTED_ERROR)

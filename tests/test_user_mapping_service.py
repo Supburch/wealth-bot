@@ -99,13 +99,11 @@ async def test_get_user_propagates_fetch_failure():
             await ums.get_user("U1")
 
 
-async def test_handler_returns_unavailable_not_denied_on_fetch_failure():
+async def test_handler_bubbles_up_on_fetch_failure():
     from handlers.today_handler import TodayHandler
-    from core.messages import UNEXPECTED_ERROR, ACCESS_DENIED
     with patch(
         "handlers.today_handler.get_user",
         AsyncMock(side_effect=ConnectionError("boom")),
     ):
-        result = await TodayHandler().handle("U_UNKNOWN")
-    assert result.text == UNEXPECTED_ERROR
-    assert result.text != ACCESS_DENIED
+        with pytest.raises(ConnectionError):
+            await TodayHandler().handle("U_UNKNOWN")
