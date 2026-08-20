@@ -230,9 +230,11 @@ Error handling read paths have inconsistent shapes:
 - `services/user_mapping_service.py` and the module-level `@cached` portfolio functions → raw exception (untyped).
 - After **P2.4a**, `PortfolioHandler`, `PortfolioService.get_portfolio`, and `ValidationService.validate_portfolio` no longer swallow unexpected exceptions with a broad `except Exception`; they catch only the typed domain errors (`PortfolioReadError`, `PortfolioParseError`) and let anything else bubble up.
 
-**Impact:** the two raw boundaries above can still raise untyped exceptions; until they are wrapped, those transient failures surface as unhandled errors instead of typed domain errors.
+**Impact:** the two raw boundaries above can still raise untyped exceptions. As of **P2.4c**, `CommandRouter.route_command` has a centralized catch-all that logs the traceback and returns `UNEXPECTED_ERROR`, so these no longer crash the webhook — but they still aren't surfaced as typed domain errors until the boundaries are wrapped.
 
 **Remaining fix (Deferred — not yet scheduled):** introduce a shared `SheetsReadError`, `raise … from e` at the two raw boundaries, and relabel the misleading log messages. Does not touch cache/retry/lock logic.
+
+**`reply_message` outside the router catch-all (Deferred — not yet scheduled):** `main.py`'s `line_bot_api.reply_message(...)` call sits outside `CommandRouter`'s P2.4c catch-all, so an SDK/network failure there still raises unhandled (surfaces as a 500 with no friendly reply). Pre-existing gap, not introduced by P2.4c.
 
 ---
 
@@ -305,3 +307,10 @@ Local webhook: expose via ngrok → point LINE Developers Console to `/callback`
 - `services/validation_service.py`: dropped the synthetic `ValidationIssue` fallback on unexpected exceptions.
 - Added 4 regression tests (bubbles-up behavior for the three layers + `PortfolioReadError` → `PORTFOLIO_READ_ERROR` mapping).
 - Tests: **140 passed, 2 skipped** (full suite, `tests/test_webhook.py` included: 4 passed).
+
+### 2026-08-20 — P2.4c: centralized catch-all in CommandRouter
+
+- `services/command_router.py`: `route_command` now wraps handler/symbol dispatch in a single `except Exception` catch-all — the one intentional broad catch in the request path. It logs the full traceback via `logger.exception` and returns the existing `UNEXPECTED_ERROR` message instead of letting unexpected exceptions crash the webhook.
+- Complements P2.4a (which removed broad catches from the read/validation layers) and unblocks P2.4b.
+- Added `tests/test_command_router.py` with 4 tests: normal path, unknown command, handler exception → `UNEXPECTED_ERROR`, symbol fallback exception → `UNEXPECTED_ERROR`.
+- Tests: **144 passed, 2 skipped** (full suite).
