@@ -12,7 +12,7 @@ from linebot.v3.webhooks import MessageEvent, TextMessageContent
 
 from config import settings
 from core.enums import ResponseType
-from core.redaction import mask_id
+from core.redaction import mask_id, redact_text
 from models.health import HealthDto
 from models.response import AppResponse
 from services.command_router import build_router
@@ -130,7 +130,7 @@ async def line_webhook(request: Request, x_line_signature: str = Header(None)):
             user_id = event.source.user_id
             text = event.message.text
             logger.info("Received message from %s", mask_id(user_id))
-            logger.debug("Message text: %r", text)
+            logger.debug("Message text: %s", redact_text(text))
 
             response = await router.route_command(user_id, text)
             line_bot_api.reply_message(

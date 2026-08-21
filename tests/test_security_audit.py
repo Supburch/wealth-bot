@@ -39,7 +39,7 @@ PII_LOG_PATTERNS = (
     (r"logger\.(?:info|debug|warning|error|exception)\([^)]*\{spreadsheet_id\}", "raw spreadsheet_id interpolated in log call"),
     (r"logger\.(?:info|debug|warning|error|exception)\([^)]*, user_id\s*[,)]", "raw user_id passed as log argument"),
     (r"logger\.(?:info|debug|warning|error|exception)\([^)]*, spreadsheet_id\s*[,)]", "raw spreadsheet_id passed as log argument"),
-    (r"extra=\{\"spreadsheet_id\":\s*spreadsheet_id\s*\}", "raw spreadsheet_id in log extra dict"),
+    (r"extra=\{[^}]*\"(?:user_id|spreadsheet_id|text|command|raw_command|user_mapping_result)\"\s*:(?!\s*(?:mask_id|redact_text)\()", "unmasked identifier in log extra dict"),
     (r"logger\.(?:info|debug|warning|error|exception)\([^)]*\{e\}", "raw exception interpolated in log call"),
     (r"logger\.(?:info|debug|warning|error|exception)\([^)]*, e\s*[,)]", "raw exception passed as log argument"),
     (r"logger\.(?:info|debug|warning|error|exception)\([^)]*str\(e\)", "raw str(e) in log call"),

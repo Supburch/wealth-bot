@@ -12,6 +12,7 @@ from typing import Awaitable, Callable
 from handlers.base import CommandHandler
 from models.response import AppResponse
 from core.messages import UNKNOWN_COMMAND, UNEXPECTED_ERROR
+from core.redaction import mask_id
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +45,7 @@ class CommandRouter:
                 return await self.symbol_handler(user_id, command)
             return AppResponse(text=UNKNOWN_COMMAND)
         except Exception:
-            logger.exception("Unhandled error routing command %r", command)
+            logger.exception("Unhandled error routing command %s", mask_id(command))
             return AppResponse(text=UNEXPECTED_ERROR)
 
 

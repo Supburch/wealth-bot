@@ -17,3 +17,20 @@ def mask_id(value: object) -> str:
         return "<empty>"
     digest = hashlib.sha256(text.encode("utf-8")).hexdigest()[:8]
     return f"{text[:4]}…{digest}"
+
+
+def redact_text(value: object) -> str:
+    """Redact free-form user text entirely for logs.
+
+    Unlike ``mask_id`` — which keeps a short opaque prefix for correlating
+    identifiers — free-form message text is not opaque, so even a short leading
+    prefix can leak content. Return only a length hint plus the full SHA-256
+    digest so log lines stay correlatable without exposing any content.
+    """
+    if value is None:
+        return "<none>"
+    text = str(value)
+    if not text:
+        return "<empty>"
+    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    return f"<len={len(text)}:{digest}>"
