@@ -19,7 +19,45 @@ from services.command_router import build_router
 from services.sheets_service import check_sheets_health
 from services.cache import get_cache_entries_count
 
-logging.basicConfig(level=getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO))
+class ExtraFieldFormatter(logging.Formatter):
+    """Render ``extra={...}`` keys as key=value pairs on the log line.
+
+    Standard :class:`logging.LogRecord` attributes are excluded so only the
+    caller-supplied ``extra`` fields (e.g. ``spreadsheet_id``, ``error_type``)
+    are surfaced in the output.
+    """
+
+    _STANDARD_ATTRS = frozenset({
+        "args", "asctime", "created", "exc_info", "exc_text", "filename",
+        "funcName", "levelname", "levelno", "lineno", "module", "msecs",
+        "msg", "name", "pathname", "process", "processName", "relativeCreated",
+        "stack_info", "taskName", "thread", "threadName", "message",
+    })
+
+    def format(self, record: logging.LogRecord) -> str:
+        base = super().format(record)
+        extras = {
+            key: value
+            for key, value in vars(record).items()
+            if key not in self._STANDARD_ATTRS
+        }
+        if extras:
+            rendered = " ".join(
+                f"{key}={value}" for key, value in sorted(extras.items())
+            )
+            return f"{base} [{rendered}]"
+        return base
+
+
+handler = logging.StreamHandler()
+handler.setFormatter(
+    ExtraFieldFormatter(fmt="%(levelname)s:%(name)s:%(message)s")
+)
+logging.basicConfig(
+    level=getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO),
+    handlers=[handler],
+    force=True,
+)
 logger = logging.getLogger(__name__)
 
 START_TIME = time.time()
