@@ -1,6 +1,7 @@
 import time
 import logging
 from contextlib import asynccontextmanager
+from uuid import uuid4
 from fastapi import FastAPI, Request, Header, HTTPException
 from linebot.v3 import WebhookParser
 from linebot.v3.exceptions import InvalidSignatureError
@@ -12,6 +13,7 @@ from linebot.v3.webhooks import MessageEvent, TextMessageContent
 
 from config import settings
 from core.enums import ResponseType
+from core.correlation import RequestIdFilter, request_id_var
 from core.redaction import mask_id, redact_text
 from models.health import HealthDto
 from models.response import AppResponse
@@ -31,7 +33,7 @@ class ExtraFieldFormatter(logging.Formatter):
         "args", "asctime", "created", "exc_info", "exc_text", "filename",
         "funcName", "levelname", "levelno", "lineno", "module", "msecs",
         "msg", "name", "pathname", "process", "processName", "relativeCreated",
-        "stack_info", "taskName", "thread", "threadName", "message",
+        "request_id", "stack_info", "taskName", "thread", "threadName", "message",
     })
 
     def format(self, record: logging.LogRecord) -> str:
@@ -51,8 +53,9 @@ class ExtraFieldFormatter(logging.Formatter):
 
 handler = logging.StreamHandler()
 handler.setFormatter(
-    ExtraFieldFormatter(fmt="%(levelname)s:%(name)s:%(message)s")
+    ExtraFieldFormatter(fmt="%(levelname)s:%(name)s:%(request_id)s:%(message)s")
 )
+handler.addFilter(RequestIdFilter())
 logging.basicConfig(
     level=getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO),
     handlers=[handler],
@@ -103,40 +106,44 @@ async def health_check():
 
 @app.post("/callback")
 async def line_webhook(request: Request, x_line_signature: str = Header(None)):
-    # LINE always sends this header. When it is missing, the request did not
-    # come from LINE, so fail closed with 401. Guarding here also avoids a 500:
-    # the SDK raises AttributeError (not InvalidSignatureError) when signature
-    # is None.
-    if not x_line_signature:
-        raise HTTPException(status_code=401, detail="Missing signature")
-
-    body = await request.body()
-    if not body:
-        raise HTTPException(status_code=400, detail="Empty body")
-
+    token = request_id_var.set(uuid4().hex[:8])
     try:
-        events = parser.parse(body.decode("utf-8"), x_line_signature)
-    except InvalidSignatureError:
-        raise HTTPException(status_code=401, detail="Invalid signature")
+        # LINE always sends this header. When it is missing, the request did not
+        # come from LINE, so fail closed with 401. Guarding here also avoids a 500:
+        # the SDK raises AttributeError (not InvalidSignatureError) when signature
+        # is None.
+        if not x_line_signature:
+            raise HTTPException(status_code=401, detail="Missing signature")
 
-    with ApiClient(line_config) as api_client:
-        line_bot_api = MessagingApi(api_client)
-        for event in events:
-            if not isinstance(event, MessageEvent):
-                continue
-            if not isinstance(event.message, TextMessageContent):
-                continue
+        body = await request.body()
+        if not body:
+            raise HTTPException(status_code=400, detail="Empty body")
 
-            user_id = event.source.user_id
-            text = event.message.text
-            logger.info("Received message from %s", mask_id(user_id))
-            logger.debug("Message text: %s", redact_text(text))
+        try:
+            events = parser.parse(body.decode("utf-8"), x_line_signature)
+        except InvalidSignatureError:
+            raise HTTPException(status_code=401, detail="Invalid signature")
 
-            response = await router.route_command(user_id, text)
-            line_bot_api.reply_message(
-                ReplyMessageRequest(
-                    reply_token=event.reply_token,
-                    messages=[_build_line_message(response)],
+        with ApiClient(line_config) as api_client:
+            line_bot_api = MessagingApi(api_client)
+            for event in events:
+                if not isinstance(event, MessageEvent):
+                    continue
+                if not isinstance(event.message, TextMessageContent):
+                    continue
+
+                user_id = event.source.user_id
+                text = event.message.text
+                logger.info("Received message from %s", mask_id(user_id))
+                logger.debug("Message text: %s", redact_text(text))
+
+                response = await router.route_command(user_id, text)
+                line_bot_api.reply_message(
+                    ReplyMessageRequest(
+                        reply_token=event.reply_token,
+                        messages=[_build_line_message(response)],
+                    )
                 )
-            )
+    finally:
+        request_id_var.reset(token)
 
