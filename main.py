@@ -71,7 +71,7 @@ router = build_router(settings.APP_VERSION)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info(f"Starting Wealth Bot v{settings.APP_VERSION}...")
+    logger.info("Starting Wealth Bot v%s...", settings.APP_VERSION)
     yield
     logger.info("Shutting down Wealth Bot...")
 

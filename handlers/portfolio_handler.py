@@ -1,5 +1,4 @@
 import asyncio
-import logging
 from models.response import AppResponse
 from core.enums import ResponseType
 from core.messages import (
@@ -11,7 +10,6 @@ from services.user_mapping_service import get_user
 from core.exceptions import PortfolioReadError, PortfolioParseError
 from builders.portfolio_flex_builder import build_portfolio_flex
 
-logger = logging.getLogger(__name__)
 
 class PortfolioHandler:
     def __init__(self, portfolio_service: PortfolioService):
