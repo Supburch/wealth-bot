@@ -24,7 +24,7 @@ LINE Messaging API
   /callback  /health
        │
        ▼
-  line_service.py          ← main dispatcher (monolithic if/elif)
+  command_router.py        ← main dispatcher (handler-based routing)
        │
   ┌────┴────────────┐
   │                 │
@@ -43,8 +43,7 @@ sheets_service (Google Sheets API / gspread)
 | Layer | File | Role |
 |-------|------|------|
 | **Entry** | `main.py` | FastAPI app, `/callback` webhook, `/health`, lifespan |
-| **Dispatcher** | `services/line_service.py` | Route LINE text commands (monolithic if/elif); format Thai replies |
-| **Router (new)** | `services/command_router.py` | Command → handler mapping (refactoring target) |
+| **Dispatcher** | `services/command_router.py` | Route LINE text commands (handler-based); format Thai replies |
 | **Handlers (new)** | `handlers/*.py` | One handler per command; returns `AppResponse` |
 | **Business Logic** | `services/portfolio_service.py` | Parse portfolio data, compute summaries |
 | **User Auth** | `services/user_mapping_service.py` | Map LINE user ID → spreadsheet via Master Sheet |
@@ -56,7 +55,7 @@ sheets_service (Google Sheets API / gspread)
 ### Data Flow
 
 1. LINE sends text → `main.py` `/callback`
-2. `line_service.handle_user_command(user_id, text)` is called
+2. `command_router.route_command(user_id, text)` is called
 3. `user_mapping_service.get_user(user_id)` reads **Master Sheet** (`Users` tab) → returns `UserInfo` (spreadsheet_id, role, enabled)
 4. Portfolio commands call `portfolio_service` → `portfolio_repository` → `sheets_service` using **per-user spreadsheet_id**
 5. Reply formatted in Thai and sent back via LINE Messaging API
@@ -117,8 +116,7 @@ wealthbot/
 │   ├── sheets_service.py        # gspread client + Master Sheet + per-user sheets
 │   ├── portfolio_service.py     # Business logic + parsing
 │   ├── user_mapping_service.py  # LINE user → spreadsheet mapping
-│   ├── line_service.py          # Main dispatcher (monolithic if/elif) — current entry
-│   └── command_router.py        # Handler-based routing — refactoring target
+│   └── command_router.py        # Handler-based routing
 ├── handlers/
 │   ├── base.py                  # CommandHandler protocol
 │   ├── portfolio_handler.py
@@ -129,7 +127,7 @@ wealthbot/
 └── tests/
     ├── test_cache.py
     ├── test_portfolio_service.py
-    └── test_line_commands.py
+    └── test_handlers.py
 ```
 
 ### Placement Rules
@@ -137,8 +135,8 @@ wealthbot/
 - DTOs/schemas → `models/`
 - Business logic → `services/`
 - Raw data fetch → `repositories/`
-- Command handling → `handlers/` (new) or `line_service.py` (legacy)
-- Message formatting → `builders/` or inline in `line_service.py`
+- Command handling → `handlers/`
+- Message formatting → `builders/`
 - Shared constants/exceptions → `core/`
 - Webhook/HTTP → `main.py`
 - Env/config → `config.py` / `core/config.py`
@@ -202,23 +200,22 @@ Prefix `หุ้น ` is stripped before routing (e.g. `หุ้น AAPL` → 
 | `status` | Health, cache entries, uptime |
 
 When adding commands:
-- Legacy path: update `services/line_service.py`
-- New path: add handler in `handlers/`, register in `command_router.py`
-- Add tests in `tests/test_line_commands.py`
+- Add handler in `handlers/`, register in `command_router.py`
+- Add tests in `tests/test_handlers.py`
 
 ---
 
 ## Refactoring Notes
 
-The project is transitioning from monolithic `line_service.py` to handler-based architecture:
+The project uses a handler-based architecture (the legacy `line_service.py` dispatcher was removed in P1):
 
-| Current (production) | Target (refactoring) |
-|---------------------|----------------------|
-| `line_service.py` if/elif | `command_router.py` + `handlers/` |
-| Function-based portfolio_service | Class-based `PortfolioService` + `PortfolioRepository` |
-| Inline text replies | `builders/` + `AppResponse` (text / Flex) |
+| Concern | Pattern |
+|---------|---------|
+| Command dispatch | `command_router.py` + `handlers/` |
+| Business logic | `PortfolioService` + `PortfolioRepository` |
+| Reply formatting | `builders/` + `AppResponse` (text / Flex) |
 
-When implementing new features, prefer the **handler + repository** pattern unless explicitly told to use the legacy path.
+When implementing new features, use the **handler + repository** pattern.
 
 ---
 
@@ -246,7 +243,7 @@ uvicorn main:app --reload
 pytest
 pytest tests/test_cache.py -v
 pytest tests/test_portfolio_service.py -v
-pytest tests/test_line_commands.py -v
+pytest tests/test_handlers.py -v
 curl http://localhost:8000/health
 ```
 
