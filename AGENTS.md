@@ -233,6 +233,8 @@ Error handling read paths have inconsistent shapes:
 
 **`reply_message` outside the router catch-all (Deferred — not yet scheduled):** `main.py`'s `line_bot_api.reply_message(...)` call sits outside `CommandRouter`'s P2.4c catch-all, so an SDK/network failure there still raises unhandled (surfaces as a 500 with no friendly reply). Pre-existing gap, not introduced by P2.4c.
 
+**Duplicate detection misses rows with concurrent parse errors (Deferred — not yet scheduled):** If the same symbol appears twice and one instance has a parse error (e.g. bad shares value), duplicate detection only compares cleanly-parsed rows — the pair's duplicate relationship isn't flagged, though the bad row still gets its own parse-error issue. **Impact:** user still sees an error for that row, just not labeled as "duplicate".
+
 ---
 
 ## Development Commands
