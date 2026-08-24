@@ -1,13 +1,13 @@
 import logging
 from decimal import Decimal, InvalidOperation
-from pydantic import ValidationError
 
 from core.exceptions import PortfolioReadError
-from models.portfolio import PortfolioItem
+from models.portfolio import PortfolioRow
 from models.validation import ValidationIssue, ValidationSummary
 from repositories.portfolio_repository import PortfolioRepository
 
 logger = logging.getLogger(__name__)
+
 
 class ValidationService:
     """Validates the raw Portfolio sheet data."""
@@ -29,10 +29,7 @@ class ValidationService:
             # We fetch raw rows. The repository skips the header.
             fetch = self.repository.fetch_portfolio_rows(spreadsheet_id)
             rows = fetch.rows
-            
-            # The repository index is 0-based for the data rows. 
-            # In Sheets, row 1 is header, row 2 is first data row.
-            # So actual sheet row is approx `index + 2`.
+
             # Short (malformed) rows: flag instead of silently dropping.
             for short in fetch.short_rows:
                 total_rows += 1
@@ -48,52 +45,51 @@ class ValidationService:
                     )
                 )
 
+            # Symbols that parse cleanly, for cross-row duplicate detection.
+            valid_symbols: list[tuple[int, str]] = []
             for i, row in enumerate(rows):
                 total_rows += 1
                 sheet_row_num = i + 2
-                
-                try:
-                    PortfolioItem(
-                        symbol=row.symbol,
-                        avg_cost=Decimal(row.avg_cost.replace(",", "")),
-                        shares=Decimal(row.shares.replace(",", "")),
-                        current_price=Decimal(row.current_price.replace(",", "")),
-                    )
-                    valid_rows += 1
-                except (InvalidOperation, ValueError) as e:
-                    invalid_rows += 1
-                    if isinstance(e, InvalidOperation):
-                        error_str = "Invalid number format (letters or special characters found)"
-                    else:
-                        error_str = str(e)
-                        if "could not convert" in error_str or "invalid literal" in error_str:
-                             error_str = "Invalid number format (letters or special characters found)"
-                    
-                    issues.append(
-                        ValidationIssue(
-                            row_index=sheet_row_num,
-                            symbol=row.symbol or "UNKNOWN",
-                            error_message=error_str
-                        )
-                    )
-                except ValidationError as e:
-                    invalid_rows += 1
-                    # Pydantic validation error (e.g. negative shares/prices)
-                    # Extract the first error message
-                    err_msg = e.errors()[0].get("msg", str(e))
-                    
-                    # Clean up common pydantic messages
-                    if "Value error, " in err_msg:
-                        err_msg = err_msg.replace("Value error, ", "")
 
+                row_issues = self._validate_row(row)
+                if row_issues:
+                    invalid_rows += 1
+                    for message in row_issues:
+                        issues.append(
+                            ValidationIssue(
+                                row_index=sheet_row_num,
+                                symbol=row.symbol or "UNKNOWN",
+                                error_message=message,
+                            )
+                        )
+                else:
+                    valid_rows += 1
+                    valid_symbols.append((sheet_row_num, row.symbol.strip()))
+
+            # Duplicate symbol detection (portfolio-level, cross-row).
+            symbol_rows: dict[str, list[int]] = {}
+            for sheet_row_num, symbol in valid_symbols:
+                key = symbol.casefold()
+                symbol_rows.setdefault(key, []).append(sheet_row_num)
+
+            reported: set[str] = set()
+            for _, symbol in valid_symbols:
+                key = symbol.casefold()
+                rows = symbol_rows[key]
+                if len(rows) > 1 and key not in reported:
+                    reported.add(key)
+                    invalid_rows += 1
                     issues.append(
                         ValidationIssue(
-                            row_index=sheet_row_num,
-                            symbol=row.symbol or "UNKNOWN",
-                            error_message=err_msg
+                            row_index=0,
+                            symbol=symbol,
+                            error_message=(
+                                f"Duplicate symbol '{symbol}' at rows "
+                                f"{', '.join(str(r) for r in sorted(rows))}"
+                            ),
                         )
                     )
-                    
+
         except PortfolioReadError as e:
             logger.error(
                 "Failed to read portfolio for validation: %s",
@@ -121,3 +117,63 @@ class ValidationService:
             invalid_rows=invalid_rows,
             issues=issues
         )
+
+    def _validate_row(self, row: PortfolioRow) -> list[str]:
+        """Validate a single row field-by-field and return error messages."""
+        messages: list[str] = []
+
+        if not row.symbol.strip():
+            messages.append("Symbol is empty")
+
+        shares_message = self._validate_numeric(
+            row.shares,
+            field_name="shares",
+            display_name="Shares",
+            zero_message="Shares cannot be zero",
+            negative_message="Shares cannot be negative",
+        )
+        if shares_message:
+            messages.append(shares_message)
+
+        avg_cost_message = self._validate_numeric(
+            row.avg_cost,
+            field_name="average cost",
+            display_name="Average cost",
+            zero_message="Prices cannot be zero",
+            negative_message="Prices cannot be negative",
+        )
+        if avg_cost_message:
+            messages.append(avg_cost_message)
+
+        current_price_message = self._validate_numeric(
+            row.current_price,
+            field_name="current price",
+            display_name="Current price",
+            zero_message="Prices cannot be zero",
+            negative_message="Prices cannot be negative",
+        )
+        if current_price_message:
+            messages.append(current_price_message)
+
+        return messages
+
+    @staticmethod
+    def _validate_numeric(
+        raw: str,
+        field_name: str,
+        display_name: str,
+        zero_message: str,
+        negative_message: str,
+    ) -> str | None:
+        """Validate a numeric field; returns an error message or None if valid."""
+        if not raw.strip():
+            return f"{display_name} is empty"
+        try:
+            value = Decimal(raw.replace(",", ""))
+        except (InvalidOperation, ValueError):
+            return f"Invalid number format for {field_name}"
+        if value == 0:
+            return zero_message
+        if value < 0:
+            return negative_message
+        return None

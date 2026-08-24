@@ -124,6 +124,126 @@ def test_validation_service_unexpected_error_bubbles_up():
         service.validate_portfolio("dummy_id")
 
 
+def test_validation_service_duplicate_symbols_flagged():
+    repo = MagicMock()
+    repo.fetch_portfolio_rows.return_value = PortfolioFetchResult(
+        rows=[
+            PortfolioRow(symbol="AAPL", avg_cost="150.00", shares="10", current_price="160.00"),
+            PortfolioRow(symbol="AAPL", avg_cost="150.00", shares="5", current_price="160.00"),
+        ],
+        short_rows=[],
+    )
+    service = ValidationService(repo)
+    summary = service.validate_portfolio("dummy_id")
+
+    assert summary.is_valid is False
+    assert summary.total_rows == 2
+    assert summary.valid_rows == 2
+    assert summary.invalid_rows == 1
+    assert len(summary.issues) == 1
+    assert summary.issues[0].symbol == "AAPL"
+    assert summary.issues[0].error_message == "Duplicate symbol 'AAPL' at rows 2, 3"
+
+
+def test_validation_service_unique_symbols_no_duplicate_issue():
+    repo = MagicMock()
+    repo.fetch_portfolio_rows.return_value = PortfolioFetchResult(
+        rows=[
+            PortfolioRow(symbol="AAPL", avg_cost="150.00", shares="10", current_price="160.00"),
+            PortfolioRow(symbol="MSFT", avg_cost="250.00", shares="5", current_price="280.00"),
+        ],
+        short_rows=[],
+    )
+    service = ValidationService(repo)
+    summary = service.validate_portfolio("dummy_id")
+
+    assert summary.is_valid is True
+    assert summary.valid_rows == 2
+    assert summary.invalid_rows == 0
+    assert len(summary.issues) == 0
+
+
+def test_validation_service_zero_shares_flagged():
+    repo = MagicMock()
+    repo.fetch_portfolio_rows.return_value = PortfolioFetchResult(
+        rows=[
+            PortfolioRow(symbol="AAPL", avg_cost="150.00", shares="0", current_price="160.00"),
+        ],
+        short_rows=[],
+    )
+    service = ValidationService(repo)
+    summary = service.validate_portfolio("dummy_id")
+
+    assert summary.is_valid is False
+    assert summary.invalid_rows == 1
+    assert summary.issues[0].error_message == "Shares cannot be zero"
+
+
+def test_validation_service_zero_price_flagged():
+    repo = MagicMock()
+    repo.fetch_portfolio_rows.return_value = PortfolioFetchResult(
+        rows=[
+            PortfolioRow(symbol="MSFT", avg_cost="250.00", shares="5", current_price="0"),
+        ],
+        short_rows=[],
+    )
+    service = ValidationService(repo)
+    summary = service.validate_portfolio("dummy_id")
+
+    assert summary.is_valid is False
+    assert summary.invalid_rows == 1
+    assert summary.issues[0].error_message == "Prices cannot be zero"
+
+
+def test_validation_service_blank_symbol_flagged():
+    repo = MagicMock()
+    repo.fetch_portfolio_rows.return_value = PortfolioFetchResult(
+        rows=[
+            PortfolioRow(symbol="", avg_cost="150.00", shares="10", current_price="160.00"),
+        ],
+        short_rows=[],
+    )
+    service = ValidationService(repo)
+    summary = service.validate_portfolio("dummy_id")
+
+    assert summary.is_valid is False
+    assert summary.invalid_rows == 1
+    assert summary.issues[0].symbol == "UNKNOWN"
+    assert summary.issues[0].error_message == "Symbol is empty"
+
+
+def test_validation_service_blank_numeric_field_flagged():
+    repo = MagicMock()
+    repo.fetch_portfolio_rows.return_value = PortfolioFetchResult(
+        rows=[
+            PortfolioRow(symbol="MSFT", avg_cost="", shares="5", current_price="280.00"),
+        ],
+        short_rows=[],
+    )
+    service = ValidationService(repo)
+    summary = service.validate_portfolio("dummy_id")
+
+    assert summary.is_valid is False
+    assert summary.invalid_rows == 1
+    assert summary.issues[0].error_message == "Average cost is empty"
+
+
+def test_validation_service_wrong_type_field_flagged():
+    repo = MagicMock()
+    repo.fetch_portfolio_rows.return_value = PortfolioFetchResult(
+        rows=[
+            PortfolioRow(symbol="MSFT", avg_cost="250.00", shares="N/A", current_price="280.00"),
+        ],
+        short_rows=[],
+    )
+    service = ValidationService(repo)
+    summary = service.validate_portfolio("dummy_id")
+
+    assert summary.is_valid is False
+    assert summary.invalid_rows == 1
+    assert summary.issues[0].error_message == "Invalid number format for shares"
+
+
 def test_validation_result_to_rows_for_valid_summary():
     summary = ValidationSummary(total_rows=2, valid_rows=2, invalid_rows=0, issues=[])
     result = ValidationResult(spreadsheet_id="sheet_1", summary=summary, run_id="run_1")
