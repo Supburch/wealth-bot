@@ -11,6 +11,7 @@ from models.response import AppResponse
 from core.enums import ResponseType
 from core.messages import ACCESS_DENIED
 from models.user import UserInfo
+from repositories.portfolio_repository import PortfolioFetchResult, ShortRow
 from repositories.validation_result_repository import GoogleSheetResultRepository
 from services.writeback_service import WriteBackService
 
@@ -21,10 +22,13 @@ MOCK_USER = UserInfo(user_id="U_ALLOWED", spreadsheet_id="test_sheet", role="use
 
 def test_validation_service_success():
     repo = MagicMock()
-    repo.fetch_portfolio_rows.return_value = [
-        PortfolioRow(symbol="AAPL", avg_cost="150.00", shares="10", current_price="160.00"),
-        PortfolioRow(symbol="MSFT", avg_cost="250.00", shares="5", current_price="280.00"),
-    ]
+    repo.fetch_portfolio_rows.return_value = PortfolioFetchResult(
+        rows=[
+            PortfolioRow(symbol="AAPL", avg_cost="150.00", shares="10", current_price="160.00"),
+            PortfolioRow(symbol="MSFT", avg_cost="250.00", shares="5", current_price="280.00"),
+        ],
+        short_rows=[],
+    )
     service = ValidationService(repo)
     summary = service.validate_portfolio("dummy_id")
 
@@ -37,11 +41,14 @@ def test_validation_service_success():
 
 def test_validation_service_with_invalid_numbers():
     repo = MagicMock()
-    repo.fetch_portfolio_rows.return_value = [
-        PortfolioRow(symbol="AAPL", avg_cost="150.00", shares="10", current_price="160.00"),
-        # Invalid shares
-        PortfolioRow(symbol="MSFT", avg_cost="250.00", shares="N/A", current_price="280.00"),
-    ]
+    repo.fetch_portfolio_rows.return_value = PortfolioFetchResult(
+        rows=[
+            PortfolioRow(symbol="AAPL", avg_cost="150.00", shares="10", current_price="160.00"),
+            # Invalid shares
+            PortfolioRow(symbol="MSFT", avg_cost="250.00", shares="N/A", current_price="280.00"),
+        ],
+        short_rows=[],
+    )
     service = ValidationService(repo)
     summary = service.validate_portfolio("dummy_id")
 
@@ -57,10 +64,13 @@ def test_validation_service_with_invalid_numbers():
 
 def test_validation_service_with_negative_values():
     repo = MagicMock()
-    repo.fetch_portfolio_rows.return_value = [
-        PortfolioRow(symbol="AAPL", avg_cost="-150.00", shares="10", current_price="160.00"),
-        PortfolioRow(symbol="MSFT", avg_cost="250.00", shares="-5", current_price="280.00"),
-    ]
+    repo.fetch_portfolio_rows.return_value = PortfolioFetchResult(
+        rows=[
+            PortfolioRow(symbol="AAPL", avg_cost="-150.00", shares="10", current_price="160.00"),
+            PortfolioRow(symbol="MSFT", avg_cost="250.00", shares="-5", current_price="280.00"),
+        ],
+        short_rows=[],
+    )
     service = ValidationService(repo)
     summary = service.validate_portfolio("dummy_id")
 
@@ -70,6 +80,27 @@ def test_validation_service_with_negative_values():
     assert len(summary.issues) == 2
     assert "Prices cannot be negative" in summary.issues[0].error_message
     assert "Shares cannot be negative" in summary.issues[1].error_message
+
+
+def test_validation_service_short_row_produces_issue():
+    repo = MagicMock()
+    repo.fetch_portfolio_rows.return_value = PortfolioFetchResult(
+        rows=[
+            PortfolioRow(symbol="AAPL", avg_cost="150.00", shares="10", current_price="160.00"),
+        ],
+        short_rows=[ShortRow(row_number=5, column_count=2)],
+    )
+    service = ValidationService(repo)
+    summary = service.validate_portfolio("dummy_id")
+
+    assert summary.is_valid is False
+    assert summary.total_rows == 2
+    assert summary.valid_rows == 1
+    assert summary.invalid_rows == 1
+    assert len(summary.issues) == 1
+    assert summary.issues[0].row_index == 5
+    assert summary.issues[0].symbol == "UNKNOWN"
+    assert "has only 2 columns, expected 4" in summary.issues[0].error_message
 
 
 def test_validation_service_read_error():

@@ -27,11 +27,27 @@ class ValidationService:
 
         try:
             # We fetch raw rows. The repository skips the header.
-            rows = self.repository.fetch_portfolio_rows(spreadsheet_id)
+            fetch = self.repository.fetch_portfolio_rows(spreadsheet_id)
+            rows = fetch.rows
             
             # The repository index is 0-based for the data rows. 
             # In Sheets, row 1 is header, row 2 is first data row.
             # So actual sheet row is approx `index + 2`.
+            # Short (malformed) rows: flag instead of silently dropping.
+            for short in fetch.short_rows:
+                total_rows += 1
+                invalid_rows += 1
+                issues.append(
+                    ValidationIssue(
+                        row_index=short.row_number,
+                        symbol="UNKNOWN",
+                        error_message=(
+                            f"Row {short.row_number} has only "
+                            f"{short.column_count} columns, expected 4 — skipped"
+                        ),
+                    )
+                )
+
             for i, row in enumerate(rows):
                 total_rows += 1
                 sheet_row_num = i + 2

@@ -83,7 +83,8 @@ class PortfolioService:
         self, spreadsheet_id: str, strict: bool = False
     ) -> ServiceResult[PortfolioHoldings]:
         try:
-            rows = self.repository.fetch_portfolio_rows(spreadsheet_id)
+            fetch = self.repository.fetch_portfolio_rows(spreadsheet_id)
+            rows = fetch.rows
             items: list[PortfolioItem] = []
 
             for row in rows:
