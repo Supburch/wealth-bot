@@ -244,6 +244,50 @@ def test_validation_service_wrong_type_field_flagged():
     assert summary.issues[0].error_message == "Invalid number format for shares"
 
 
+def test_validation_service_valid_symbol_formats_pass():
+    repo = MagicMock()
+    repo.fetch_portfolio_rows.return_value = PortfolioFetchResult(
+        rows=[
+            PortfolioRow(symbol="AAPL", avg_cost="150.00", shares="10", current_price="160.00"),
+            PortfolioRow(symbol="BTC", avg_cost="250.00", shares="5", current_price="280.00"),
+            PortfolioRow(symbol="X", avg_cost="1.00", shares="1", current_price="2.00"),
+            PortfolioRow(symbol="PTT.BK", avg_cost="30.00", shares="100", current_price="35.00"),
+            PortfolioRow(symbol="BRK.B", avg_cost="400.00", shares="2", current_price="410.00"),
+            PortfolioRow(symbol="ADVANC.BK", avg_cost="200.00", shares="10", current_price="210.00"),
+        ],
+        short_rows=[],
+    )
+    service = ValidationService(repo)
+    summary = service.validate_portfolio("dummy_id")
+
+    assert summary.is_valid is True
+    assert summary.valid_rows == 6
+    assert summary.invalid_rows == 0
+    assert len(summary.issues) == 0
+
+
+@pytest.mark.parametrize(
+    "bad_symbol",
+    ["brk.b", "AAPL123", "AAPL US", "12345", "AAPL.", "AAPL.BKKK"],
+)
+def test_validation_service_unusual_symbol_format_flagged(bad_symbol):
+    repo = MagicMock()
+    repo.fetch_portfolio_rows.return_value = PortfolioFetchResult(
+        rows=[
+            PortfolioRow(symbol=bad_symbol, avg_cost="150.00", shares="10", current_price="160.00"),
+        ],
+        short_rows=[],
+    )
+    service = ValidationService(repo)
+    summary = service.validate_portfolio("dummy_id")
+
+    assert summary.is_valid is False
+    assert summary.invalid_rows == 1
+    assert len(summary.issues) == 1
+    assert summary.issues[0].symbol == bad_symbol
+    assert "Unusual symbol format" in summary.issues[0].error_message
+
+
 def test_validation_result_to_rows_for_valid_summary():
     summary = ValidationSummary(total_rows=2, valid_rows=2, invalid_rows=0, issues=[])
     result = ValidationResult(spreadsheet_id="sheet_1", summary=summary, run_id="run_1")

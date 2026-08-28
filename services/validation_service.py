@@ -1,4 +1,5 @@
 import logging
+import re
 from decimal import Decimal, InvalidOperation
 
 from core.exceptions import PortfolioReadError
@@ -7,6 +8,10 @@ from models.validation import ValidationIssue, ValidationSummary
 from repositories.portfolio_repository import PortfolioRepository
 
 logger = logging.getLogger(__name__)
+
+# 1–6 uppercase letters, with an optional market suffix for foreign listings
+# (e.g. AAPL, NVDA, BTC, PTT.BK, ADVANC.BK, BRK.B). No digits, hyphens, or spaces.
+_SYMBOL_PATTERN = re.compile(r"^[A-Z]{1,6}(\.[A-Z]{1,3})?$")
 
 
 class ValidationService:
@@ -124,6 +129,10 @@ class ValidationService:
 
         if not row.symbol.strip():
             messages.append("Symbol is empty")
+        else:
+            symbol_message = self._validate_symbol_format(row.symbol)
+            if symbol_message:
+                messages.append(symbol_message)
 
         shares_message = self._validate_numeric(
             row.shares,
@@ -156,6 +165,18 @@ class ValidationService:
             messages.append(current_price_message)
 
         return messages
+
+    @staticmethod
+    def _validate_symbol_format(symbol: str) -> str | None:
+        """Sanity-check the symbol format; returns a message for unusual symbols."""
+        stripped = symbol.strip()
+        if not _SYMBOL_PATTERN.fullmatch(stripped):
+            return (
+                f"Unusual symbol format '{stripped}' — expected 1–6 uppercase "
+                f"letters with an optional market suffix (e.g. AAPL, BTC, PTT.BK); "
+                f"verify the ticker"
+            )
+        return None
 
     @staticmethod
     def _validate_numeric(
