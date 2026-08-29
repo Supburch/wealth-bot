@@ -6,6 +6,7 @@ Focus: a failed user-mapping fetch must raise (not be swallowed into a cached
 import pytest
 from unittest.mock import patch, AsyncMock
 
+from core.exceptions import SheetsReadError
 from services.cache import clear_cache
 
 
@@ -36,7 +37,7 @@ async def test_fetch_all_users_raises_on_failure():
         "services.user_mapping_service.get_master_sheet_records",
         side_effect=ConnectionError("boom"),
     ):
-        with pytest.raises(ConnectionError):
+        with pytest.raises(SheetsReadError):
             await ums._fetch_all_users()
 
 
@@ -47,7 +48,7 @@ async def test_failure_does_not_poison_cache():
         "services.user_mapping_service.get_master_sheet_records",
         side_effect=ConnectionError("boom"),
     ):
-        with pytest.raises(ConnectionError):
+        with pytest.raises(SheetsReadError):
             await ums._fetch_all_users()
     assert get_cache_entries_count() == 0
 
@@ -63,7 +64,7 @@ async def test_failure_is_retried_not_served_from_cache():
         return [{"LINE_USER_ID": "U1", "SPREADSHEET_ID": "S1", "ROLE": "user", "ENABLED": "TRUE"}]
 
     with patch("services.user_mapping_service.get_master_sheet_records", side_effect=fake):
-        with pytest.raises(ConnectionError):
+        with pytest.raises(SheetsReadError):
             await ums._fetch_all_users()
         result = await ums._fetch_all_users()
     assert calls["n"] == 2
@@ -95,7 +96,7 @@ async def test_get_user_propagates_fetch_failure():
         "services.user_mapping_service.get_master_sheet_records",
         side_effect=ConnectionError("boom"),
     ):
-        with pytest.raises(ConnectionError):
+        with pytest.raises(SheetsReadError):
             await ums.get_user("U1")
 
 

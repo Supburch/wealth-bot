@@ -2,6 +2,7 @@ import asyncio
 import logging
 from typing import Dict
 from config import settings
+from core.exceptions import SheetsReadError
 from core.redaction import mask_id
 from models.user import UserInfo
 from services.sheets_service import get_master_sheet_records
@@ -35,7 +36,7 @@ async def _fetch_all_users() -> Dict[str, UserInfo]:
             type(e).__name__,
             exc_info=True,
         )
-        raise
+        raise SheetsReadError("Failed to fetch users from Master Sheet") from e
 
 
 async def get_user(user_id: str) -> UserInfo | None:

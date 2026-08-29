@@ -20,7 +20,7 @@ from typing import Generic, TypeVar
 
 from pydantic import ValidationError
 
-from core.exceptions import PortfolioParseError, PortfolioReadError
+from core.exceptions import PortfolioParseError, PortfolioReadError, SheetsReadError
 from core.messages import PORTFOLIO_PARSE_ERROR, PORTFOLIO_READ_ERROR
 from models.portfolio import (
     HoldingBreakdown,
@@ -119,7 +119,10 @@ class PortfolioService:
 @cached("portfolio_summary")
 async def get_portfolio_summary(user_info: UserInfo) -> PortfolioSummary:
     """Read pre-computed summary from 'PortfolioSummary' sheet (Metric|Value format)."""
-    data = await asyncio.to_thread(get_sheet_as_dict, user_info.spreadsheet_id, "PortfolioSummary")
+    try:
+        data = await asyncio.to_thread(get_sheet_as_dict, user_info.spreadsheet_id, "PortfolioSummary")
+    except Exception as e:
+        raise SheetsReadError("Failed to read PortfolioSummary sheet") from e
     return PortfolioSummary(
         portfolio_value=_parse_float(data["PortfolioValue"]),
         cost_basis=_parse_float(data["CostBasis"]),
@@ -132,7 +135,10 @@ async def get_portfolio_summary(user_info: UserInfo) -> PortfolioSummary:
 @cached("today_summary")
 async def get_today_summary(user_info: UserInfo) -> TodaySummary:
     """Read pre-computed summary from 'TodaySummary' sheet (Metric|Value format)."""
-    data = await asyncio.to_thread(get_sheet_as_dict, user_info.spreadsheet_id, "TodaySummary")
+    try:
+        data = await asyncio.to_thread(get_sheet_as_dict, user_info.spreadsheet_id, "TodaySummary")
+    except Exception as e:
+        raise SheetsReadError("Failed to read TodaySummary sheet") from e
     return TodaySummary(
         portfolio_value=_parse_float(data["PortfolioValue"]),
         today_profit=_parse_float(data["TodayProfit"]),
@@ -146,7 +152,10 @@ async def _fetch_holdings_index(user_info: UserInfo) -> dict[str, HoldingBreakdo
     Fetch HoldingsBreakdown records and build an uppercase-symbol → HoldingBreakdown dict.
     Cached per user for O(1) symbol lookup.
     """
-    records = await asyncio.to_thread(get_sheet_records, user_info.spreadsheet_id, "HoldingsBreakdown")
+    try:
+        records = await asyncio.to_thread(get_sheet_records, user_info.spreadsheet_id, "HoldingsBreakdown")
+    except Exception as e:
+        raise SheetsReadError("Failed to read HoldingsBreakdown sheet") from e
     index: dict[str, HoldingBreakdown] = {}
     for row in records:
         symbol = str(row.get("Symbol", "")).strip().upper()
@@ -223,7 +232,10 @@ async def get_asset_allocation(user_info: UserInfo) -> dict[str, Decimal]:
     Read from 'AssetAllocation' sheet (Metric|Value format).
     Returns dict[str, Decimal] placeholder until the sheet schema is confirmed.
     """
-    data = await asyncio.to_thread(get_sheet_as_dict, user_info.spreadsheet_id, "AssetAllocation")
+    try:
+        data = await asyncio.to_thread(get_sheet_as_dict, user_info.spreadsheet_id, "AssetAllocation")
+    except Exception as e:
+        raise SheetsReadError("Failed to read AssetAllocation sheet") from e
     result: dict[str, Decimal] = {}
     for k, v in data.items():
         try:

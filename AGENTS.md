@@ -224,12 +224,12 @@ When implementing new features, use the **handler + repository** pattern.
 Error handling read paths have inconsistent shapes:
 
 - `repositories/portfolio_repository.py` → typed `PortfolioReadError` (clean).
-- `services/user_mapping_service.py` and the module-level `@cached` portfolio functions → raw exception (untyped).
+- `services/user_mapping_service.py` and the module-level `@cached` portfolio functions → typed `SheetsReadError` (wrapped via `raise … from e`).
 - After **P2.4a**, `PortfolioHandler`, `PortfolioService.get_portfolio`, and `ValidationService.validate_portfolio` no longer swallow unexpected exceptions with a broad `except Exception`; they catch only the typed domain errors (`PortfolioReadError`, `PortfolioParseError`) and let anything else bubble up.
 
 **Impact:** the two raw boundaries above can still raise untyped exceptions. As of **P2.4c**, `CommandRouter.route_command` has a centralized catch-all that logs the traceback and returns `UNEXPECTED_ERROR`, so these no longer crash the webhook — but they still aren't surfaced as typed domain errors until the boundaries are wrapped.
 
-**Remaining fix (Deferred — not yet scheduled):** introduce a shared `SheetsReadError`, `raise … from e` at the two raw boundaries, and relabel the misleading log messages. Does not touch cache/retry/lock logic.
+**Resolved:** introduced a shared `SheetsReadError` and `raise … from e` at the two raw boundaries (`services/user_mapping_service.py` and the module-level `@cached` portfolio functions in `services/portfolio_service.py`). Cache/retry/lock logic untouched.
 
 **`reply_message` guarded (resolved):** `main.py`'s `line_bot_api.reply_message(...)` call is now wrapped in try/except; an SDK/network failure is logged via `logger.exception` (request_id-correlated, no PII) and the webhook still returns HTTP 200 so LINE does not retry. Covered by `tests/test_webhook.py::test_callback_reply_message_failure_returns_200`.
 

@@ -1,3 +1,7 @@
+class SheetsReadError(Exception):
+    """Raised when a Sheets read fails at a service boundary."""
+    pass
+
 class PortfolioReadError(Exception):
     """Raised when the repository cannot read data from the external source."""
     pass
