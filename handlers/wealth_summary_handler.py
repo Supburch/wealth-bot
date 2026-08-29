@@ -27,17 +27,17 @@ class WealthSummaryHandler:
         
         best_worst = ""
         if data.best_performer:
-            best_worst = f"Top Performer: {data.best_performer}"
+            best_worst = f"กำไรสูงสุด: {data.best_performer}"
             if data.worst_performer:
-                best_worst += f" | Worst: {data.worst_performer}"
+                best_worst += f" | ขาดทุนสูงสุด: {data.worst_performer}"
             best_worst += "\n"
 
         text = (
-            f"💰 Wealth Summary\n"
-            f"Portfolio Value:\n฿{_fmt(data.summary.portfolio_value, True)}\n"
-            f"Profit:\n{sign}{data.summary.profit_pct}%\n"
-            f"Cash:\n฿{_fmt(data.summary.cash, True)}\n"
+            f"💰 สรุปพอร์ต\n"
+            f"มูลค่าพอร์ต:\n฿{_fmt(data.summary.portfolio_value, True)}\n"
+            f"ผลตอบแทน:\n{sign}{data.summary.profit_pct}%\n"
+            f"เงินสด:\n฿{_fmt(data.summary.cash, True)}\n"
             f"{best_worst}"
-            f"Top Holdings:\n{top}"
+            f"รายการหุ้นทั้งหมด:\n{top}"
         )
         return AppResponse(type=ResponseType.TEXT, text=text)

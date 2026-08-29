@@ -114,7 +114,7 @@ async def test_wealth_summary_handler_returns_text():
          patch("handlers.wealth_summary_handler.get_wealth_summary", AsyncMock(return_value=MOCK_WEALTH)):
         result = await WealthSummaryHandler().handle(ALLOWED_USER)
     assert result.type == ResponseType.TEXT
-    assert "Wealth Summary" in result.text
+    assert "สรุปพอร์ต" in result.text
     assert "AAPL" in result.text
 
 
