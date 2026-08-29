@@ -244,3 +244,14 @@ async def get_asset_allocation(user_info: UserInfo) -> dict[str, Decimal]:
             logger.warning("Skipping invalid allocation entry")
     return result
 
+
+ALLOCATION_TOLERANCE = Decimal("0.5")
+
+
+def allocation_balance_check(allocation: dict[str, Decimal]) -> tuple[bool, Decimal]:
+    """Return (within_tolerance, total_pct). Empty allocation is within tolerance (no warning)."""
+    if not allocation:
+        return True, Decimal("0")
+    total = sum(allocation.values(), Decimal("0"))
+    return abs(total - Decimal("100")) <= ALLOCATION_TOLERANCE, total
+

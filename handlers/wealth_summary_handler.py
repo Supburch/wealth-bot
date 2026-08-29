@@ -1,7 +1,7 @@
 from models.response import AppResponse
 from core.enums import ResponseType
 from core.messages import ACCESS_DENIED
-from services.portfolio_service import get_wealth_summary
+from services.portfolio_service import allocation_balance_check, get_wealth_summary
 from services.user_mapping_service import get_user
 
 
@@ -40,4 +40,8 @@ class WealthSummaryHandler:
             f"{best_worst}"
             f"รายการหุ้นทั้งหมด:\n{top}"
         )
+        if data.asset_allocation:
+            within, total = allocation_balance_check(data.asset_allocation)
+            if not within:
+                text += f"\n⚠️ รวมสัดส่วนไม่ครบ 100% ({total:.1f}%)"
         return AppResponse(type=ResponseType.TEXT, text=text)

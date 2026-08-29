@@ -1,7 +1,7 @@
 ﻿from models.response import AppResponse
 from core.enums import ResponseType
 from core.messages import ACCESS_DENIED
-from services.portfolio_service import get_asset_allocation
+from services.portfolio_service import allocation_balance_check, get_asset_allocation
 from services.user_mapping_service import get_user
 
 
@@ -19,4 +19,7 @@ class AllocationHandler:
 
         lines = "\n".join(f"{k}: {v}%" for k, v in allocation.items())
         text = f"📊 สัดส่วนพอร์ต\n\n{lines}"
+        within, total = allocation_balance_check(allocation)
+        if not within:
+            text += f"\n⚠️ รวมสัดส่วนไม่ครบ 100% ({total:.1f}%)"
         return AppResponse(type=ResponseType.TEXT, text=text)

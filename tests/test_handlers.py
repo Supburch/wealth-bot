@@ -116,6 +116,34 @@ async def test_wealth_summary_handler_returns_text():
     assert result.type == ResponseType.TEXT
     assert "สรุปพอร์ต" in result.text
     assert "AAPL" in result.text
+    assert "ไม่ครบ" not in result.text
+
+
+async def test_wealth_summary_handler_allocation_within_tolerance_no_warning():
+    from handlers.wealth_summary_handler import WealthSummaryHandler
+    wealth = WealthSummary(
+        summary=MOCK_SUMMARY,
+        top_holdings=MOCK_HOLDINGS[:2],
+        asset_allocation={"Stocks": Decimal("70"), "Cash": Decimal("30")},
+    )
+    with patch("handlers.wealth_summary_handler.get_user", AsyncMock(return_value=MOCK_USER)), \
+         patch("handlers.wealth_summary_handler.get_wealth_summary", AsyncMock(return_value=wealth)):
+        result = await WealthSummaryHandler().handle(ALLOWED_USER)
+    assert "ไม่ครบ" not in result.text
+
+
+async def test_wealth_summary_handler_allocation_out_of_tolerance_warns():
+    from handlers.wealth_summary_handler import WealthSummaryHandler
+    wealth = WealthSummary(
+        summary=MOCK_SUMMARY,
+        top_holdings=MOCK_HOLDINGS[:2],
+        asset_allocation={"Stocks": Decimal("70"), "Cash": Decimal("25")},
+    )
+    with patch("handlers.wealth_summary_handler.get_user", AsyncMock(return_value=MOCK_USER)), \
+         patch("handlers.wealth_summary_handler.get_wealth_summary", AsyncMock(return_value=wealth)):
+        result = await WealthSummaryHandler().handle(ALLOWED_USER)
+    assert "ไม่ครบ" in result.text
+    assert "95.0%" in result.text
 
 
 # ── TodayHandler ──────────────────────────────────────────────────────────────
@@ -178,6 +206,7 @@ async def test_allocation_handler_returns_text():
     assert result.type == ResponseType.TEXT
     assert "Stocks" in result.text
     assert "Cash" in result.text
+    assert "ไม่ครบ" not in result.text
 
 
 async def test_allocation_handler_empty():
@@ -186,6 +215,17 @@ async def test_allocation_handler_empty():
          patch("handlers.allocation_handler.get_asset_allocation", AsyncMock(return_value={})):
         result = await AllocationHandler().handle(ALLOWED_USER)
     assert "ไม่พบ" in result.text
+    assert "ไม่ครบ" not in result.text
+
+
+async def test_allocation_handler_out_of_tolerance_warns():
+    from handlers.allocation_handler import AllocationHandler
+    allocation = {"Stocks": Decimal("70"), "Cash": Decimal("25")}
+    with patch("handlers.allocation_handler.get_user", AsyncMock(return_value=MOCK_USER)), \
+         patch("handlers.allocation_handler.get_asset_allocation", AsyncMock(return_value=allocation)):
+        result = await AllocationHandler().handle(ALLOWED_USER)
+    assert "ไม่ครบ" in result.text
+    assert "95.0%" in result.text
 
 
 # ── Symbol Lookup ─────────────────────────────────────────────────────────────
