@@ -157,3 +157,54 @@ def test_get_portfolio_unexpected_error_bubbles_up():
     with pytest.raises(KeyError):
         PortfolioService(repo).get_portfolio("sheet")
 
+
+MOCK_ALLOCATION_DICT = {
+    "Equity": "70.5",
+    "Bonds": "20.0",
+    "Cash": "9.5"
+}
+
+async def test_get_wealth_summary_includes_allocation(mock_user):
+    from decimal import Decimal
+    with patch("services.portfolio_service.get_sheet_as_dict") as mock_dict, \
+         patch("services.portfolio_service.get_sheet_records") as mock_records:
+        
+        def dict_side_effect(sheet_id, range_name):
+            if range_name == "PortfolioSummary":
+                return MOCK_PORTFOLIO_DICT
+            elif range_name == "AssetAllocation":
+                return MOCK_ALLOCATION_DICT
+            return {}
+        mock_dict.side_effect = dict_side_effect
+        mock_records.return_value = MOCK_HOLDINGS_RECORDS
+
+        from services.portfolio_service import get_wealth_summary
+        result = await get_wealth_summary(mock_user)
+
+    assert result.summary.portfolio_value == 1_000_000.0
+    assert len(result.top_holdings) == 3
+    assert result.asset_allocation == {
+        "Equity": Decimal("70.5"),
+        "Bonds": Decimal("20.0"),
+        "Cash": Decimal("9.5")
+    }
+
+async def test_get_wealth_summary_degrades_gracefully_on_allocation_error(mock_user):
+    with patch("services.portfolio_service.get_sheet_as_dict") as mock_dict, \
+         patch("services.portfolio_service.get_sheet_records") as mock_records:
+        
+        def dict_side_effect(sheet_id, range_name):
+            if range_name == "PortfolioSummary":
+                return MOCK_PORTFOLIO_DICT
+            elif range_name == "AssetAllocation":
+                raise ValueError("Sheet error")
+            return {}
+        mock_dict.side_effect = dict_side_effect
+        mock_records.return_value = MOCK_HOLDINGS_RECORDS
+
+        from services.portfolio_service import get_wealth_summary
+        result = await get_wealth_summary(mock_user)
+
+    assert result.summary.portfolio_value == 1_000_000.0
+    assert result.asset_allocation == {}
+

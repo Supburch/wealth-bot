@@ -189,10 +189,21 @@ async def get_holding_breakdown(
 
 
 async def get_wealth_summary(user_info: UserInfo) -> WealthSummary:
-    """Composite: portfolio summary + top 3 holdings."""
+    """Composite: portfolio summary + top 3 holdings + allocation."""
     summary = await get_portfolio_summary(user_info)
     top_holdings = await get_top_holdings(user_info)
-    return WealthSummary(summary=summary, top_holdings=top_holdings[:3])
+
+    try:
+        allocation = await get_asset_allocation(user_info)
+    except Exception:
+        logger.exception("Failed to fetch asset allocation for wealth summary")
+        allocation = {}
+
+    return WealthSummary(
+        summary=summary, 
+        top_holdings=top_holdings[:3],
+        asset_allocation=allocation
+    )
 
 
 @cached("asset_allocation")
