@@ -11,6 +11,7 @@ import base64
 import hashlib
 import hmac
 import json
+import logging
 
 import pytest
 from fastapi.testclient import TestClient
@@ -96,3 +97,22 @@ def test_callback_valid_signature_processes(client):
 
     assert resp.status_code == 200
     mock_api.reply_message.assert_called_once()
+
+
+def test_callback_reply_message_failure_returns_200(client, caplog):
+    body = _message_body()
+    with patch.object(
+        main.router, "route_command", AsyncMock(return_value=AppResponse(text="ok"))
+    ), patch("main.ApiClient"), patch("main.MessagingApi") as mock_messaging_cls:
+        mock_api = mock_messaging_cls.return_value
+        mock_api.reply_message.side_effect = Exception("boom")
+        with caplog.at_level(logging.ERROR):
+            resp = client.post(
+                "/callback",
+                content=body,
+                headers={"X-Line-Signature": _sign(body)},
+            )
+
+    assert resp.status_code == 200
+    mock_api.reply_message.assert_called_once()
+    assert "Failed to send LINE reply" in caplog.text

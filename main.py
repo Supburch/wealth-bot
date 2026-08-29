@@ -138,12 +138,15 @@ async def line_webhook(request: Request, x_line_signature: str = Header(None)):
                 logger.debug("Message text: %s", redact_text(text))
 
                 response = await router.route_command(user_id, text)
-                line_bot_api.reply_message(
-                    ReplyMessageRequest(
-                        reply_token=event.reply_token,
-                        messages=[_build_line_message(response)],
+                try:
+                    line_bot_api.reply_message(
+                        ReplyMessageRequest(
+                            reply_token=event.reply_token,
+                            messages=[_build_line_message(response)],
+                        )
                     )
-                )
+                except Exception:
+                    logger.exception("Failed to send LINE reply for user %s", mask_id(user_id))
     finally:
         request_id_var.reset(token)
 
