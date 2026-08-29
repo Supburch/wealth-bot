@@ -19,10 +19,10 @@ async def handle_symbol_lookup(user_id: str, symbol: str) -> AppResponse:
         sign = "+" if breakdown.profit_pct >= 0 else ""
         text = (
             f"{breakdown.symbol}\n\n"
-            f"Market Value:\n฿{breakdown.market_value:,.0f}\n\n"
-            f"Weight:\n{breakdown.weight:g}%\n\n"
-            f"Cost:\n฿{breakdown.cost:,.0f}\n\n"
-            f"Profit:\n{sign}{breakdown.profit_pct}%"
+            f"มูลค่า:\n฿{breakdown.market_value:,.0f}\n\n"
+            f"สัดส่วนในพอร์ต:\n{breakdown.weight:g}%\n\n"
+            f"ต้นทุน:\n฿{breakdown.cost:,.0f}\n\n"
+            f"ผลตอบแทน:\n{sign}{breakdown.profit_pct}%"
         )
         return AppResponse(type=ResponseType.TEXT, text=text)
 
