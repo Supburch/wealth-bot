@@ -21,23 +21,23 @@ class AdminHandler:
 
         if self.command == "refresh":
             await clear_cache()
-            return AppResponse(type=ResponseType.TEXT, text="✅ Refresh: ล้าง Cache ข้อมูลเรียบร้อยแล้ว")
+            return AppResponse(type=ResponseType.TEXT, text="✅ รีเฟรช: ล้างแคชข้อมูลเรียบร้อยแล้ว")
 
         if self.command == "reload":
             await clear_cache()
             invalidate_client()
-            return AppResponse(type=ResponseType.TEXT, text="🔄 Reload: ล้าง Cache และเชื่อมต่อ Google Sheets ใหม่แล้ว")
+            return AppResponse(type=ResponseType.TEXT, text="🔄 โหลดใหม่: ล้างแคชและเชื่อมต่อ Google Sheets ใหม่แล้ว")
 
         if self.command == "status":
             sheets_ok = await check_sheets_health()
-            status_str = "OK" if sheets_ok else "ERROR"
+            status_str = "ปกติ" if sheets_ok else "ผิดพลาด"
             text = (
-                f"📊 System Status\n\n"
-                f"Sheets: {status_str}\n"
-                f"Cache: OK\n"
-                f"Entries: {get_cache_entries_count()}\n"
-                f"Last Refresh: {get_last_refresh_time()}\n"
-                f"Cache TTL: {CACHE_TTL}s"
+                f"📊 สถานะระบบ\n\n"
+                f"ชีต: {status_str}\n"
+                f"แคช: ปกติ\n"
+                f"รายการ: {get_cache_entries_count()}\n"
+                f"รีเฟรชล่าสุด: {get_last_refresh_time()}\n"
+                f"อายุแคช: {CACHE_TTL}s"
             )
             return AppResponse(type=ResponseType.TEXT, text=text)
 

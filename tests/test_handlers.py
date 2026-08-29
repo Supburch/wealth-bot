@@ -237,7 +237,7 @@ async def test_admin_handler_refresh():
     with patch("handlers.admin_handler.get_user", AsyncMock(return_value=MOCK_ADMIN)), \
          patch("handlers.admin_handler.clear_cache", AsyncMock()):
         result = await AdminHandler("refresh").handle(ADMIN_USER)
-    assert "Refresh" in result.text or "refresh" in result.text.lower()
+    assert "รีเฟรช" in result.text
 
 
 async def test_admin_handler_status():
@@ -245,5 +245,5 @@ async def test_admin_handler_status():
     with patch("handlers.admin_handler.get_user", AsyncMock(return_value=MOCK_ADMIN)), \
          patch("handlers.admin_handler.check_sheets_health", AsyncMock(return_value=True)):
         result = await AdminHandler("status").handle(ADMIN_USER)
-    assert "Sheets" in result.text
-    assert "OK" in result.text
+    assert "ชีต" in result.text
+    assert "ปกติ" in result.text

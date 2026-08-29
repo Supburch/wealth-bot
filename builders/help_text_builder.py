@@ -12,7 +12,7 @@ def build_help_text() -> str:
         "losers — หุ้นขาดทุนสูงสุด\n\n"
         "[Symbol] เพื่อดูข้อมูลรายตัว\n"
         "เช่น AAPL, NVDA, BTC\n\n"
-        "-- Utility --\n"
+        "-- อื่นๆ --\n"
         "ping, version\n\n"
         "-- Admin --\n"
         "refresh, reload, status\n"

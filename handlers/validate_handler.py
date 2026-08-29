@@ -36,6 +36,6 @@ class ValidateHandler:
         contents = build_validation_flex(summary)
         return AppResponse(
             type=ResponseType.RICH, 
-            alt_text="ผลการตรวจสอบข้อมูล (Validation)", 
+            alt_text="ผลการตรวจสอบข้อมูล", 
             contents=contents
         )
