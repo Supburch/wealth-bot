@@ -50,11 +50,17 @@ class ValidationService:
                     )
                 )
 
-            # Symbols that parse cleanly, for cross-row duplicate detection.
-            valid_symbols: list[tuple[int, str]] = []
+            # Raw non-empty symbols, for cross-row duplicate detection. Registered
+            # for EVERY row regardless of numeric validity, so a symbol on both a
+            # clean row and a row with a numeric parse error is still flagged.
+            all_symbols: list[tuple[int, str]] = []
             for i, row in enumerate(rows):
                 total_rows += 1
                 sheet_row_num = i + 2
+
+                symbol = row.symbol.strip()
+                if symbol:
+                    all_symbols.append((sheet_row_num, symbol))
 
                 row_issues = self._validate_row(row)
                 if row_issues:
@@ -69,16 +75,15 @@ class ValidationService:
                         )
                 else:
                     valid_rows += 1
-                    valid_symbols.append((sheet_row_num, row.symbol.strip()))
 
             # Duplicate symbol detection (portfolio-level, cross-row).
             symbol_rows: dict[str, list[int]] = {}
-            for sheet_row_num, symbol in valid_symbols:
+            for sheet_row_num, symbol in all_symbols:
                 key = symbol.casefold()
                 symbol_rows.setdefault(key, []).append(sheet_row_num)
 
             reported: set[str] = set()
-            for _, symbol in valid_symbols:
+            for _, symbol in all_symbols:
                 key = symbol.casefold()
                 rows = symbol_rows[key]
                 if len(rows) > 1 and key not in reported:

@@ -233,7 +233,7 @@ Error handling read paths have inconsistent shapes:
 
 **`reply_message` guarded (resolved):** `main.py`'s `line_bot_api.reply_message(...)` call is now wrapped in try/except; an SDK/network failure is logged via `logger.exception` (request_id-correlated, no PII) and the webhook still returns HTTP 200 so LINE does not retry. Covered by `tests/test_webhook.py::test_callback_reply_message_failure_returns_200`.
 
-**Duplicate detection misses rows with concurrent parse errors (Deferred — not yet scheduled):** If the same symbol appears twice and one instance has a parse error (e.g. bad shares value), duplicate detection only compares cleanly-parsed rows — the pair's duplicate relationship isn't flagged, though the bad row still gets its own parse-error issue. **Impact:** user still sees an error for that row, just not labeled as "duplicate".
+**Duplicate detection decoupled from numeric validity (resolved):** `validation_service.py` now registers every row's raw non-empty symbol into the duplicate map during the per-row loop, independent of numeric parsing, so a symbol on both a clean row and a row with a numeric parse error is still flagged. Empty/whitespace symbols stay excluded from duplicate comparison (they are only flagged "Symbol is empty"). Covered by `tests/test_validation.py`.
 
 **`wealth_summary_handler.py` is entirely English (Deferred — not yet scheduled):** The handler constructs its summary in English (`Portfolio Value:`, `Top Holdings:`), which is inconsistent with the rest of the bot's Thai UI guidelines. The new best/worst headline deliberately matches this existing English convention for local consistency until a full i18n pass is scheduled.
 

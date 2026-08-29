@@ -145,6 +145,55 @@ def test_validation_service_duplicate_symbols_flagged():
     assert summary.issues[0].error_message == "Duplicate symbol 'AAPL' at rows 2, 3"
 
 
+def test_validation_service_duplicate_with_parse_error_still_flagged():
+    repo = MagicMock()
+    repo.fetch_portfolio_rows.return_value = PortfolioFetchResult(
+        rows=[
+            PortfolioRow(symbol="AAPL", avg_cost="150.00", shares="10", current_price="160.00"),
+            PortfolioRow(symbol="AAPL", avg_cost="150.00", shares="N/A", current_price="160.00"),
+        ],
+        short_rows=[],
+    )
+    service = ValidationService(repo)
+    summary = service.validate_portfolio("dummy_id")
+
+    assert summary.is_valid is False
+    assert summary.total_rows == 2
+    assert summary.valid_rows == 1
+    assert summary.invalid_rows == 2
+
+    # The bad-shares row still gets its own parse error.
+    assert any(
+        i.row_index == 3 and "Invalid number format for shares" in i.error_message
+        for i in summary.issues
+    )
+    # Both rows share the same symbol, so a duplicate is also flagged.
+    assert any(
+        i.error_message == "Duplicate symbol 'AAPL' at rows 2, 3"
+        for i in summary.issues
+    )
+
+
+def test_validation_service_two_empty_symbols_not_duplicates():
+    repo = MagicMock()
+    repo.fetch_portfolio_rows.return_value = PortfolioFetchResult(
+        rows=[
+            PortfolioRow(symbol="", avg_cost="150.00", shares="10", current_price="160.00"),
+            PortfolioRow(symbol="   ", avg_cost="250.00", shares="5", current_price="280.00"),
+        ],
+        short_rows=[],
+    )
+    service = ValidationService(repo)
+    summary = service.validate_portfolio("dummy_id")
+
+    assert summary.is_valid is False
+    assert summary.valid_rows == 0
+    assert summary.invalid_rows == 2
+    assert len(summary.issues) == 2
+    assert all(i.error_message == "Symbol is empty" for i in summary.issues)
+    assert not any("Duplicate" in i.error_message for i in summary.issues)
+
+
 def test_validation_service_unique_symbols_no_duplicate_issue():
     repo = MagicMock()
     repo.fetch_portfolio_rows.return_value = PortfolioFetchResult(
