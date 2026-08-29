@@ -237,6 +237,14 @@ Error handling read paths have inconsistent shapes:
 
 **`wealth_summary_handler.py` is entirely English (Deferred — not yet scheduled):** The handler constructs its summary in English (`Portfolio Value:`, `Top Holdings:`), which is inconsistent with the rest of the bot's Thai UI guidelines. The new best/worst headline deliberately matches this existing English convention for local consistency until a full i18n pass is scheduled.
 
+## Known Gap: Stale-data detection — deliberately not implemented
+
+Investigated 2 approaches:
+- Manual "Last Updated" column: fragile, relies on user discipline to update on every edit.
+- Google Sheets modifiedTime metadata: technically available (no new scopes needed — spreadsheets.get already returns it), but unusable as-is because the bot's own writeback (validation_result_repository writing results back into the same file) bumps modifiedTime on every /validate call, masking true data staleness. A fix would require tracking modifiedTime BEFORE the bot's own writeback overwrites it — added complexity not justified by current need.
+
+Decision: skip stale-data detection entirely. Revisit only if user reports this as an actual pain point in practice.
+
 ---
 
 ## Development Commands
