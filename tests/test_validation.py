@@ -446,7 +446,7 @@ async def test_validate_handler_success():
     import json
     flex_str = json.dumps(result.contents, ensure_ascii=False)
     assert "✅" in flex_str
-    assert "Total" in flex_str
+    assert "ทั้งหมด" in flex_str
 
 
 @pytest.mark.asyncio

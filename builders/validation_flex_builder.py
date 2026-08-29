@@ -16,7 +16,7 @@ def build_validation_flex(summary: ValidationSummary) -> dict:
             "contents": [
                 {
                     "type": "text",
-                    "text": f"Row {issue.row_index}: {issue.symbol}",
+                    "text": f"แถว {issue.row_index}: {issue.symbol}",
                     "weight": "bold",
                     "size": "sm",
                     "color": "#333333"
@@ -42,7 +42,7 @@ def build_validation_flex(summary: ValidationSummary) -> dict:
                 "layout": "vertical",
                 "flex": 1,
                 "contents": [
-                    {"type": "text", "text": "Total", "size": "xs", "color": "#aaaaaa", "align": "center"},
+                    {"type": "text", "text": "ทั้งหมด", "size": "xs", "color": "#aaaaaa", "align": "center"},
                     {"type": "text", "text": str(summary.total_rows), "weight": "bold", "size": "md", "color": "#333333", "align": "center"}
                 ]
             },
@@ -51,7 +51,7 @@ def build_validation_flex(summary: ValidationSummary) -> dict:
                 "layout": "vertical",
                 "flex": 1,
                 "contents": [
-                    {"type": "text", "text": "Valid", "size": "xs", "color": "#aaaaaa", "align": "center"},
+                    {"type": "text", "text": "ถูกต้อง", "size": "xs", "color": "#aaaaaa", "align": "center"},
                     {"type": "text", "text": str(summary.valid_rows), "weight": "bold", "size": "md", "color": "#2ecc71", "align": "center"}
                 ]
             },
@@ -60,7 +60,7 @@ def build_validation_flex(summary: ValidationSummary) -> dict:
                 "layout": "vertical",
                 "flex": 1,
                 "contents": [
-                    {"type": "text", "text": "Errors", "size": "xs", "color": "#aaaaaa", "align": "center"},
+                    {"type": "text", "text": "ข้อผิดพลาด", "size": "xs", "color": "#aaaaaa", "align": "center"},
                     {"type": "text", "text": str(summary.invalid_rows), "weight": "bold", "size": "md", "color": "#e74c3c", "align": "center"}
                 ]
             }

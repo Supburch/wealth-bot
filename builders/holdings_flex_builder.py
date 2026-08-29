@@ -25,9 +25,9 @@ def build_holdings_flex(
         "type": "box",
         "layout": "horizontal",
         "contents": [
-            {"type": "text", "text": "Symbol", "size": "xs", "color": "#aaaaaa", "flex": 4},
-            {"type": "text", "text": "Weight", "size": "xs", "color": "#aaaaaa", "flex": 3, "align": "center"},
-            {"type": "text", "text": "P/L%", "size": "xs", "color": "#aaaaaa", "flex": 3, "align": "end"},
+            {"type": "text", "text": "หุ้น", "size": "xs", "color": "#aaaaaa", "flex": 4},
+            {"type": "text", "text": "สัดส่วน", "size": "xs", "color": "#aaaaaa", "flex": 3, "align": "center"},
+            {"type": "text", "text": "ผลตอบแทน", "size": "xs", "color": "#aaaaaa", "flex": 3, "align": "end"},
         ],
     }
 

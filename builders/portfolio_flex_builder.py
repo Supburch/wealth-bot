@@ -26,7 +26,7 @@ def build_portfolio_flex(portfolio: PortfolioHoldings) -> dict:
             "contents": [
                 {
                     "type": "text",
-                    "text": "💰 Portfolio",
+                    "text": "💰 พอร์ต",
                     "weight": "bold",
                     "size": "xl",
                     "color": "#1a1a2e"
