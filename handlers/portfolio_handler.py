@@ -35,7 +35,7 @@ class PortfolioHandler:
             output = build_portfolio_flex(portfolio)
             return AppResponse(
                 type=ResponseType.RICH,
-                alt_text="Portfolio Summary",
+                alt_text="สรุปพอร์ต",
                 contents=output,
             )
 

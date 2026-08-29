@@ -16,7 +16,7 @@ class HoldingsHandler:
 
         holdings = await get_top_holdings(user_info)
         contents = build_holdings_flex(holdings, title="📋 ถืออะไร")
-        return AppResponse(type=ResponseType.RICH, alt_text="Top Holdings", contents=contents)
+        return AppResponse(type=ResponseType.RICH, alt_text="รายการหุ้นทั้งหมด", contents=contents)
 
 
 class WinnersHandler:
@@ -29,8 +29,8 @@ class WinnersHandler:
 
         holdings = await get_all_holdings(user_info)
         winners = sorted(holdings, key=lambda h: h.profit_pct, reverse=True)
-        contents = build_holdings_flex(winners, title="🏆 Winners")
-        return AppResponse(type=ResponseType.RICH, alt_text="Winners", contents=contents)
+        contents = build_holdings_flex(winners, title="🏆 กำไรสูงสุด")
+        return AppResponse(type=ResponseType.RICH, alt_text="กำไรสูงสุด", contents=contents)
 
 
 class LosersHandler:
@@ -43,5 +43,5 @@ class LosersHandler:
 
         holdings = await get_all_holdings(user_info)
         losers = sorted(holdings, key=lambda h: h.profit_pct)
-        contents = build_holdings_flex(losers, title="📉 Losers")
-        return AppResponse(type=ResponseType.RICH, alt_text="Losers", contents=contents)
+        contents = build_holdings_flex(losers, title="📉 ขาดทุนสูงสุด")
+        return AppResponse(type=ResponseType.RICH, alt_text="ขาดทุนสูงสุด", contents=contents)

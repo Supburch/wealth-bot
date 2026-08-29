@@ -92,7 +92,7 @@ async def test_portfolio_handler_returns_rich():
          patch("handlers.portfolio_handler.build_portfolio_flex", return_value={"type": "bubble"}):
         result = await PortfolioHandler(mock_service).handle(ALLOWED_USER)
     assert result.type == ResponseType.RICH
-    assert result.alt_text == "Portfolio Summary"
+    assert result.alt_text == "สรุปพอร์ต"
     assert result.contents is not None
 
 

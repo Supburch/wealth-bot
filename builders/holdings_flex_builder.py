@@ -3,7 +3,7 @@
 
 def build_holdings_flex(
     holdings: list[HoldingBreakdown],
-    title: str = "📋 Holdings",
+    title: str = "📋 ถืออะไร",
     limit: int = 10,
 ) -> dict:
     """Build Flex Message bubble listing holdings with symbol, weight, and P/L%."""
