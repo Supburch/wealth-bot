@@ -191,7 +191,16 @@ async def get_holding_breakdown(
 async def get_wealth_summary(user_info: UserInfo) -> WealthSummary:
     """Composite: portfolio summary + top 3 holdings + allocation."""
     summary = await get_portfolio_summary(user_info)
-    top_holdings = await get_top_holdings(user_info)
+    # get_top_holdings returns the full list of holdings sorted by weight
+    all_holdings = await get_top_holdings(user_info)
+
+    best_performer = None
+    worst_performer = None
+    if all_holdings:
+        by_profit = sorted(all_holdings, key=lambda h: h.profit_pct, reverse=True)
+        best_performer = by_profit[0].symbol
+        if len(by_profit) > 1:
+            worst_performer = by_profit[-1].symbol
 
     try:
         allocation = await get_asset_allocation(user_info)
@@ -201,8 +210,10 @@ async def get_wealth_summary(user_info: UserInfo) -> WealthSummary:
 
     return WealthSummary(
         summary=summary, 
-        top_holdings=top_holdings[:3],
-        asset_allocation=allocation
+        top_holdings=all_holdings[:3],
+        asset_allocation=allocation,
+        best_performer=best_performer,
+        worst_performer=worst_performer
     )
 
 

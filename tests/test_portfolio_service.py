@@ -208,3 +208,36 @@ async def test_get_wealth_summary_degrades_gracefully_on_allocation_error(mock_u
     assert result.summary.portfolio_value == 1_000_000.0
     assert result.asset_allocation == {}
 
+async def test_get_wealth_summary_best_worst_multiple_holdings(mock_user):
+    with patch("services.portfolio_service.get_sheet_as_dict") as mock_dict, \
+         patch("services.portfolio_service.get_sheet_records") as mock_records:
+        mock_dict.return_value = MOCK_PORTFOLIO_DICT
+        mock_records.return_value = MOCK_HOLDINGS_RECORDS  # 3 holdings: AAPL (20%), NVDA (100%), BTC (25%)
+        from services.portfolio_service import get_wealth_summary
+        result = await get_wealth_summary(mock_user)
+    
+    assert result.best_performer == "NVDA"
+    assert result.worst_performer == "AAPL"
+
+async def test_get_wealth_summary_best_worst_single_holding(mock_user):
+    with patch("services.portfolio_service.get_sheet_as_dict") as mock_dict, \
+         patch("services.portfolio_service.get_sheet_records") as mock_records:
+        mock_dict.return_value = MOCK_PORTFOLIO_DICT
+        mock_records.return_value = [MOCK_HOLDINGS_RECORDS[0]]  # AAPL only
+        from services.portfolio_service import get_wealth_summary
+        result = await get_wealth_summary(mock_user)
+    
+    assert result.best_performer == "AAPL"
+    assert result.worst_performer is None
+
+async def test_get_wealth_summary_best_worst_zero_holdings(mock_user):
+    with patch("services.portfolio_service.get_sheet_as_dict") as mock_dict, \
+         patch("services.portfolio_service.get_sheet_records") as mock_records:
+        mock_dict.return_value = MOCK_PORTFOLIO_DICT
+        mock_records.return_value = []
+        from services.portfolio_service import get_wealth_summary
+        result = await get_wealth_summary(mock_user)
+    
+    assert result.best_performer is None
+    assert result.worst_performer is None
+

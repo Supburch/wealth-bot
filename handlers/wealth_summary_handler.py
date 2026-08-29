@@ -1,4 +1,4 @@
-﻿from models.response import AppResponse
+from models.response import AppResponse
 from core.enums import ResponseType
 from core.messages import ACCESS_DENIED
 from services.portfolio_service import get_wealth_summary
@@ -24,11 +24,20 @@ class WealthSummaryHandler:
         data = await get_wealth_summary(user_info)
         sign = "+" if data.summary.profit >= 0 else ""
         top = "\n".join(h.symbol for h in data.top_holdings)
+        
+        best_worst = ""
+        if data.best_performer:
+            best_worst = f"Top Performer: {data.best_performer}"
+            if data.worst_performer:
+                best_worst += f" | Worst: {data.worst_performer}"
+            best_worst += "\n"
+
         text = (
             f"💰 Wealth Summary\n"
             f"Portfolio Value:\n฿{_fmt(data.summary.portfolio_value, True)}\n"
             f"Profit:\n{sign}{data.summary.profit_pct}%\n"
             f"Cash:\n฿{_fmt(data.summary.cash, True)}\n"
+            f"{best_worst}"
             f"Top Holdings:\n{top}"
         )
         return AppResponse(type=ResponseType.TEXT, text=text)

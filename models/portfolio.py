@@ -129,3 +129,5 @@ class WealthSummary(BaseModel):
     summary: PortfolioSummary
     top_holdings: list[HoldingBreakdown]
     asset_allocation: dict[str, Decimal] = {}
+    best_performer: str | None = None
+    worst_performer: str | None = None

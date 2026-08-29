@@ -235,6 +235,8 @@ Error handling read paths have inconsistent shapes:
 
 **Duplicate detection misses rows with concurrent parse errors (Deferred — not yet scheduled):** If the same symbol appears twice and one instance has a parse error (e.g. bad shares value), duplicate detection only compares cleanly-parsed rows — the pair's duplicate relationship isn't flagged, though the bad row still gets its own parse-error issue. **Impact:** user still sees an error for that row, just not labeled as "duplicate".
 
+**`wealth_summary_handler.py` is entirely English (Deferred — not yet scheduled):** The handler constructs its summary in English (`Portfolio Value:`, `Top Holdings:`), which is inconsistent with the rest of the bot's Thai UI guidelines. The new best/worst headline deliberately matches this existing English convention for local consistency until a full i18n pass is scheduled.
+
 ---
 
 ## Development Commands
