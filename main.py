@@ -91,7 +91,7 @@ def _build_line_message(response: AppResponse):
     return TextMessage(text=response.text or "")
 
 
-@app.get("/health", response_model=HealthDto)
+@app.api_route("/health", methods=["GET", "HEAD"], response_model=HealthDto)
 async def health_check():
     sheets_ok = await check_sheets_health()
     uptime = int(time.time() - START_TIME)
