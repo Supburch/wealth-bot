@@ -1,0 +1,29 @@
+# Environment & secrets
+.env
+*.json
+!package.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# Git
+.git
+.gitignore
+
+# Tests & caches
+.pytest_cache/
+tests/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

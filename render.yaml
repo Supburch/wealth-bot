@@ -1,0 +1,18 @@
+# Render Blueprint — deploy Wealth Bot as a web service.
+# One worker is enough: the bot is stateless (Google Sheets is the source of truth).
+services:
+  - type: web
+    name: wealth-bot
+    runtime: docker
+    plan: free
+    envVars:
+      - key: LINE_CHANNEL_ACCESS_TOKEN
+        sync: false
+      - key: LINE_CHANNEL_SECRET
+        sync: false
+      - key: GOOGLE_CREDENTIALS_JSON
+        sync: false
+      - key: MASTER_SPREADSHEET_ID
+        sync: false
+      - key: SPREADSHEET_ID
+        sync: false
