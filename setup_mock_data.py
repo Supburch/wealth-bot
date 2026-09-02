@@ -36,11 +36,12 @@ def setup_mock_data():
             ["TodayProfitPct", 0.47]
         ],
         "AssetAllocation": [
-            ["AssetClass", "Percent"],
-            ["US Stocks", 55],
-            ["Crypto", 20],
-            ["ETF", 15],
-            ["Cash", 10]
+            ["Type", "Value"],
+            ["Cash", 895541],
+            ["Stock USA", 877850],
+            ["Stock Worth (DR)", 844900],
+            ["Crypto (Holding)", 212113],
+            ["FX (OI)", 85578]
         ],
         "HoldingsBreakdown": [
             ["Symbol", "MarketValue", "Weight", "Cost", "ProfitPct"],

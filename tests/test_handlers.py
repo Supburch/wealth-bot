@@ -24,6 +24,7 @@ from unittest.mock import patch, AsyncMock, MagicMock
 from models.user import UserInfo
 from models.portfolio import (
     PortfolioSummary, TodaySummary, HoldingBreakdown, WealthSummary,
+    AssetAllocation, AssetAllocationEntry,
 )
 from models.response import AppResponse
 from core.enums import ResponseType
@@ -51,7 +52,12 @@ MOCK_HOLDINGS = [
 ]
 MOCK_WEALTH = WealthSummary(summary=MOCK_SUMMARY, top_holdings=MOCK_HOLDINGS[:2])
 MOCK_AAPL = HoldingBreakdown(symbol="AAPL", market_value=300_000.0, weight=30.0, cost=250_000.0, profit_pct=20.0)
-MOCK_ALLOCATION = {"Stocks": Decimal("70"), "Cash": Decimal("30")}
+MOCK_ALLOCATION = AssetAllocation(
+    entries=[
+        AssetAllocationEntry(name="Stocks", value=Decimal("700000"), percent=Decimal("70")),
+        AssetAllocationEntry(name="Cash", value=Decimal("300000"), percent=Decimal("30")),
+    ]
+)
 
 
 def _user_side_effect(user_id: str):
@@ -124,7 +130,12 @@ async def test_wealth_summary_handler_allocation_within_tolerance_no_warning():
     wealth = WealthSummary(
         summary=MOCK_SUMMARY,
         top_holdings=MOCK_HOLDINGS[:2],
-        asset_allocation={"Stocks": Decimal("70"), "Cash": Decimal("30")},
+        asset_allocation=AssetAllocation(
+            entries=[
+                AssetAllocationEntry(name="Stocks", value=Decimal("700000"), percent=Decimal("70")),
+                AssetAllocationEntry(name="Cash", value=Decimal("300000"), percent=Decimal("30")),
+            ]
+        ),
     )
     with patch("handlers.wealth_summary_handler.get_user", AsyncMock(return_value=MOCK_USER)), \
          patch("handlers.wealth_summary_handler.get_wealth_summary", AsyncMock(return_value=wealth)):
@@ -137,7 +148,12 @@ async def test_wealth_summary_handler_allocation_out_of_tolerance_warns():
     wealth = WealthSummary(
         summary=MOCK_SUMMARY,
         top_holdings=MOCK_HOLDINGS[:2],
-        asset_allocation={"Stocks": Decimal("70"), "Cash": Decimal("25")},
+        asset_allocation=AssetAllocation(
+            entries=[
+                AssetAllocationEntry(name="Stocks", value=Decimal("700000"), percent=Decimal("70")),
+                AssetAllocationEntry(name="Cash", value=Decimal("250000"), percent=Decimal("25")),
+            ]
+        ),
     )
     with patch("handlers.wealth_summary_handler.get_user", AsyncMock(return_value=MOCK_USER)), \
          patch("handlers.wealth_summary_handler.get_wealth_summary", AsyncMock(return_value=wealth)):
@@ -212,7 +228,7 @@ async def test_allocation_handler_returns_text():
 async def test_allocation_handler_empty():
     from handlers.allocation_handler import AllocationHandler
     with patch("handlers.allocation_handler.get_user", AsyncMock(return_value=MOCK_USER)), \
-         patch("handlers.allocation_handler.get_asset_allocation", AsyncMock(return_value={})):
+         patch("handlers.allocation_handler.get_asset_allocation", AsyncMock(return_value=AssetAllocation(entries=[]))):
         result = await AllocationHandler().handle(ALLOWED_USER)
     assert "ไม่พบ" in result.text
     assert "ไม่ครบ" not in result.text
@@ -220,7 +236,12 @@ async def test_allocation_handler_empty():
 
 async def test_allocation_handler_out_of_tolerance_warns():
     from handlers.allocation_handler import AllocationHandler
-    allocation = {"Stocks": Decimal("70"), "Cash": Decimal("25")}
+    allocation = AssetAllocation(
+        entries=[
+            AssetAllocationEntry(name="Stocks", value=Decimal("700000"), percent=Decimal("70")),
+            AssetAllocationEntry(name="Cash", value=Decimal("250000"), percent=Decimal("25")),
+        ]
+    )
     with patch("handlers.allocation_handler.get_user", AsyncMock(return_value=MOCK_USER)), \
          patch("handlers.allocation_handler.get_asset_allocation", AsyncMock(return_value=allocation)):
         result = await AllocationHandler().handle(ALLOWED_USER)

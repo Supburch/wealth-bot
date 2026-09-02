@@ -159,9 +159,9 @@ def test_get_portfolio_unexpected_error_bubbles_up():
 
 
 MOCK_ALLOCATION_DICT = {
-    "Equity": "70.5",
-    "Bonds": "20.0",
-    "Cash": "9.5"
+    "Equity": "705000",
+    "Bonds": "200000",
+    "Cash": "95000"
 }
 
 async def test_get_wealth_summary_includes_allocation(mock_user):
@@ -183,10 +183,14 @@ async def test_get_wealth_summary_includes_allocation(mock_user):
 
     assert result.summary.portfolio_value == 1_000_000.0
     assert len(result.top_holdings) == 3
-    assert result.asset_allocation == {
-        "Equity": Decimal("70.5"),
-        "Bonds": Decimal("20.0"),
-        "Cash": Decimal("9.5")
+    assert result.asset_allocation is not None
+    assert result.asset_allocation.total == Decimal("1000000.00")
+    assert {
+        e.name: e.percent for e in result.asset_allocation.entries
+    } == {
+        "Equity": Decimal("70.50"),
+        "Bonds": Decimal("20.00"),
+        "Cash": Decimal("9.50"),
     }
 
 async def test_get_wealth_summary_degrades_gracefully_on_allocation_error(mock_user):
@@ -206,7 +210,7 @@ async def test_get_wealth_summary_degrades_gracefully_on_allocation_error(mock_u
         result = await get_wealth_summary(mock_user)
 
     assert result.summary.portfolio_value == 1_000_000.0
-    assert result.asset_allocation == {}
+    assert result.asset_allocation is None
 
 async def test_get_wealth_summary_best_worst_multiple_holdings(mock_user):
     with patch("services.portfolio_service.get_sheet_as_dict") as mock_dict, \

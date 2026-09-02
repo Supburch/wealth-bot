@@ -6,7 +6,7 @@ from services.user_mapping_service import get_user
 
 
 class AllocationHandler:
-    """Returns asset allocation (สัดส่วน). Placeholder until sheet schema confirmed."""
+    """Returns asset allocation (สัดส่วน): value + weight per asset class."""
 
     async def handle(self, user_id: str) -> AppResponse:
         user_info = await get_user(user_id)
@@ -14,11 +14,13 @@ class AllocationHandler:
             return AppResponse(type=ResponseType.TEXT, text=ACCESS_DENIED)
 
         allocation = await get_asset_allocation(user_info)
-        if not allocation:
+        if allocation is None or allocation.is_empty:
             return AppResponse(type=ResponseType.TEXT, text="ไม่พบข้อมูลสัดส่วนพอร์ต")
 
-        lines = "\n".join(f"{k}: {v}%" for k, v in allocation.items())
-        text = f"📊 สัดส่วนพอร์ต\n\n{lines}"
+        lines = "\n".join(
+            f"{e.name}: {e.percent:.1f}% (฿{e.value:,.0f})" for e in allocation.entries
+        )
+        text = f"📊 สัดส่วนพอร์ต\n\n{lines}\n\nรวม: ฿{allocation.total:,.0f}"
         within, total = allocation_balance_check(allocation)
         if not within:
             text += f"\n⚠️ รวมสัดส่วนไม่ครบ 100% ({total:.1f}%)"

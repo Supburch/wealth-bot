@@ -20,9 +20,12 @@ from typing import Generic, TypeVar
 
 from pydantic import ValidationError
 
+from core.constants import TWOPLACES
 from core.exceptions import PortfolioParseError, PortfolioReadError, SheetsReadError
 from core.messages import PORTFOLIO_PARSE_ERROR, PORTFOLIO_READ_ERROR
 from models.portfolio import (
+    AssetAllocation,
+    AssetAllocationEntry,
     HoldingBreakdown,
     PortfolioHoldings,
     PortfolioItem,
@@ -215,7 +218,7 @@ async def get_wealth_summary(user_info: UserInfo) -> WealthSummary:
         allocation = await get_asset_allocation(user_info)
     except Exception:
         logger.exception("Failed to fetch asset allocation for wealth summary")
-        allocation = {}
+        allocation = None
 
     return WealthSummary(
         summary=summary, 
@@ -227,31 +230,55 @@ async def get_wealth_summary(user_info: UserInfo) -> WealthSummary:
 
 
 @cached("asset_allocation")
-async def get_asset_allocation(user_info: UserInfo) -> dict[str, Decimal]:
+async def get_asset_allocation(user_info: UserInfo) -> AssetAllocation:
     """
-    Read from 'AssetAllocation' sheet (Metric|Value format).
-    Returns dict[str, Decimal] placeholder until the sheet schema is confirmed.
+    Read from the 'AssetAllocation' sheet in ``Type | Value`` format.
+
+    Each row is one asset class with its raw value (e.g. Cash=895541,
+    Crypto=212113). Percentages are derived here, so adding a new asset type
+    is just adding a row to the sheet.
     """
     try:
         data = await asyncio.to_thread(get_sheet_as_dict, user_info.spreadsheet_id, "AssetAllocation")
     except Exception as e:
         raise SheetsReadError("Failed to read AssetAllocation sheet") from e
-    result: dict[str, Decimal] = {}
-    for k, v in data.items():
+
+    values: list[tuple[str, Decimal]] = []
+    for name, raw in data.items():
+        name = name.strip()
+        if not name:
+            continue
         try:
-            result[k] = Decimal(str(v).replace(",", "").strip())
+            value = Decimal(
+                str(raw).replace(",", "").replace("฿", "").replace("$", "").strip()
+            )
         except Exception:
-            logger.warning("Skipping invalid allocation entry")
-    return result
+            logger.warning("Skipping invalid allocation entry %s", name)
+            continue
+        if value < 0:
+            logger.warning("Skipping negative allocation entry %s", name)
+            continue
+        values.append((name, value))
+
+    if not values:
+        return AssetAllocation(entries=[])
+
+    total = sum((v for _, v in values), Decimal("0"))
+    entries: list[AssetAllocationEntry] = []
+    for name, value in values:
+        percent = Decimal("0") if total == 0 else ((value / total) * 100).quantize(TWOPLACES)
+        entries.append(AssetAllocationEntry(name=name, value=value, percent=percent))
+
+    return AssetAllocation(entries=entries)
 
 
 ALLOCATION_TOLERANCE = Decimal("0.5")
 
 
-def allocation_balance_check(allocation: dict[str, Decimal]) -> tuple[bool, Decimal]:
+def allocation_balance_check(allocation: AssetAllocation) -> tuple[bool, Decimal]:
     """Return (within_tolerance, total_pct). Empty allocation is within tolerance (no warning)."""
-    if not allocation:
+    if allocation is None or allocation.is_empty:
         return True, Decimal("0")
-    total = sum(allocation.values(), Decimal("0"))
+    total = allocation.total_percent
     return abs(total - Decimal("100")) <= ALLOCATION_TOLERANCE, total
 

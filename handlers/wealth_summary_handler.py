@@ -40,7 +40,8 @@ class WealthSummaryHandler:
             f"{best_worst}"
             f"รายการหุ้นทั้งหมด:\n{top}"
         )
-        if data.asset_allocation:
+        if data.asset_allocation and not data.asset_allocation.is_empty:
+            text += f"\nรวมสินทรัพย์:\n฿{_fmt(float(data.asset_allocation.total), True)}"
             within, total = allocation_balance_check(data.asset_allocation)
             if not within:
                 text += f"\n⚠️ รวมสัดส่วนไม่ครบ 100% ({total:.1f}%)"

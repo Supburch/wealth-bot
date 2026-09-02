@@ -120,14 +120,46 @@ class HoldingBreakdown(BaseModel):
     profit_pct: float
 
 
+class AssetAllocationEntry(BaseModel):
+    """Single asset class: raw value plus its computed portfolio weight."""
+
+    name: str
+    value: Decimal
+    percent: Decimal
+
+
+class AssetAllocation(BaseModel):
+    """
+    Aggregate asset allocation computed from the 'AssetAllocation' sheet.
+
+    The sheet stores one row per asset class in ``Type | Value`` format, so
+    adding a new asset type is just a new row — no code change required.
+    Percentages are derived here from the raw values.
+    """
+
+    entries: list[AssetAllocationEntry]
+
+    @property
+    def total(self) -> Decimal:
+        return sum((e.value for e in self.entries), Decimal("0")).quantize(TWOPLACES)
+
+    @property
+    def total_percent(self) -> Decimal:
+        return sum((e.percent for e in self.entries), Decimal("0"))
+
+    @property
+    def is_empty(self) -> bool:
+        return len(self.entries) == 0
+
+
 class WealthSummary(BaseModel):
     """
     Composite presentation DTO: portfolio summary + top holdings + allocation.
-    asset_allocation is a placeholder dict[str, Decimal] until the
-    AssetAllocation sheet schema is formalised.
+    asset_allocation is None when no allocation data could be read.
     """
+
     summary: PortfolioSummary
     top_holdings: list[HoldingBreakdown]
-    asset_allocation: dict[str, Decimal] = {}
+    asset_allocation: AssetAllocation | None = None
     best_performer: str | None = None
     worst_performer: str | None = None
