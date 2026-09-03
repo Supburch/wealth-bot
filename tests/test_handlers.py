@@ -144,6 +144,17 @@ async def test_wealth_summary_handler_empty_allocation():
     assert "ไม่พบข้อมูลพอร์ต" in result.text
 
 
+async def test_wealth_summary_handler_data_updating():
+    from handlers.wealth_summary_handler import WealthSummaryHandler
+    from core.exceptions import SheetsReadError
+    from core.messages import DATA_UPDATING
+    with patch("handlers.wealth_summary_handler.get_user", AsyncMock(return_value=MOCK_USER)), \
+         patch("handlers.wealth_summary_handler.get_asset_allocation", AsyncMock(side_effect=SheetsReadError(DATA_UPDATING))):
+        result = await WealthSummaryHandler().handle(ALLOWED_USER)
+    assert result.type == ResponseType.TEXT
+    assert result.text == DATA_UPDATING
+
+
 # ── TodayHandler ──────────────────────────────────────────────────────────────
 
 async def test_today_handler_returns_text():
@@ -192,6 +203,17 @@ async def test_cash_handler_returns_cash():
     assert "50,000" in result.text
 
 
+async def test_cash_handler_data_updating():
+    from handlers.utility_handler import CashHandler
+    from core.exceptions import SheetsReadError
+    from core.messages import DATA_UPDATING
+    with patch("handlers.utility_handler.get_user", AsyncMock(return_value=MOCK_USER)), \
+         patch("handlers.utility_handler.get_cash_balance", AsyncMock(side_effect=SheetsReadError(DATA_UPDATING))):
+        result = await CashHandler().handle(ALLOWED_USER)
+    assert result.type == ResponseType.TEXT
+    assert result.text == DATA_UPDATING
+
+
 # ── AllocationHandler ─────────────────────────────────────────────────────────
 
 async def test_allocation_handler_returns_text():
@@ -212,6 +234,17 @@ async def test_allocation_handler_empty():
         result = await AllocationHandler().handle(ALLOWED_USER)
     assert "ไม่พบ" in result.text
     assert "ไม่ครบ" not in result.text
+
+
+async def test_allocation_handler_data_updating():
+    from handlers.allocation_handler import AllocationHandler
+    from core.exceptions import SheetsReadError
+    from core.messages import DATA_UPDATING
+    with patch("handlers.allocation_handler.get_user", AsyncMock(return_value=MOCK_USER)), \
+         patch("handlers.allocation_handler.get_asset_allocation", AsyncMock(side_effect=SheetsReadError(DATA_UPDATING))):
+        result = await AllocationHandler().handle(ALLOWED_USER)
+    assert result.type == ResponseType.TEXT
+    assert result.text == DATA_UPDATING
 
 
 async def test_allocation_handler_out_of_tolerance_warns():

@@ -63,6 +63,30 @@ async def test_get_cash_balance_zero_when_absent(mock_user):
     assert result == Decimal("0")
 
 
+async def test_get_asset_allocation_raises_on_error_value(mock_user):
+    """A transient #N/A in a Value cell surfaces as SheetsReadError(DATA_UPDATING)."""
+    from core.exceptions import SheetsReadError
+    from core.messages import DATA_UPDATING
+    from services.portfolio_service import get_asset_allocation
+    with patch("services.portfolio_service.get_sheet_as_dict",
+               return_value={"Stock USA": "#N/A", "Cash": "฿95,000"}):
+        with pytest.raises(SheetsReadError) as exc:
+            await get_asset_allocation(mock_user)
+    assert str(exc.value) == DATA_UPDATING
+
+
+async def test_get_asset_allocation_raises_on_error_type(mock_user):
+    """A transient #REF! in the Type column also surfaces as SheetsReadError."""
+    from core.exceptions import SheetsReadError
+    from core.messages import DATA_UPDATING
+    from services.portfolio_service import get_asset_allocation
+    with patch("services.portfolio_service.get_sheet_as_dict",
+               return_value={"#REF!": "", "Cash": "฿95,000"}):
+        with pytest.raises(SheetsReadError) as exc:
+            await get_asset_allocation(mock_user)
+    assert str(exc.value) == DATA_UPDATING
+
+
 async def test_get_all_holdings_derives_from_portfolio(mock_user):
     with patch("services.portfolio_service.get_sheet_records", return_value=MOCK_PORTFOLIO_RECORDS):
         from services.portfolio_service import get_all_holdings
@@ -140,6 +164,16 @@ def test_is_numeric_helper():
     assert _is_numeric("฿1,234") is True
     assert _is_numeric("#N/A") is False
     assert _is_numeric("not-a-number") is False
+
+
+def test_is_error_value_helper():
+    from services.portfolio_service import _is_error_value
+    assert _is_error_value("#N/A") is True
+    assert _is_error_value("#REF!") is True
+    assert _is_error_value("n/a") is True
+    assert _is_error_value("123.45") is False
+    assert _is_error_value("") is False
+    assert _is_error_value("  ") is False
 
 
 async def test_get_all_holdings_skips_unreadable_and_zero_rows(mock_user):

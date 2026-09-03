@@ -22,7 +22,7 @@ from pydantic import ValidationError
 
 from core.constants import TWOPLACES
 from core.exceptions import PortfolioParseError, PortfolioReadError, SheetsReadError
-from core.messages import PORTFOLIO_PARSE_ERROR, PORTFOLIO_READ_ERROR
+from core.messages import DATA_UPDATING, PORTFOLIO_PARSE_ERROR, PORTFOLIO_READ_ERROR
 from models.portfolio import (
     AssetAllocation,
     AssetAllocationEntry,
@@ -92,6 +92,13 @@ def _is_numeric(value: object) -> bool:
     except ValueError:
         return False
 
+
+
+def _is_error_value(value: object) -> bool:
+    """Return True if ``value`` is a spreadsheet error placeholder such as
+    ``#N/A`` or ``#REF!`` (transient while GOOGLEFINANCE/IMPORTRANGE refreshes)."""
+    s = str(value).strip().upper()
+    return s.startswith("#") or s == "N/A"
 
 
 # ── Class-based PortfolioService (domain) ─────────────────────────────────────
@@ -309,12 +316,17 @@ async def get_asset_allocation(user_info: UserInfo) -> AssetAllocation:
     values: list[tuple[str, Decimal]] = []
     for name, raw in data.items():
         name = name.strip()
+        if _is_error_value(name):
+            # The Type cell itself is an error (e.g. IMPORTRANGE failed to load).
+            raise SheetsReadError(DATA_UPDATING)
         if not name:
             continue
+        raw_str = str(raw).strip()
+        if _is_error_value(raw_str):
+            # The Value cell is a transient error (e.g. GOOGLEFINANCE refresh).
+            raise SheetsReadError(DATA_UPDATING)
         try:
-            value = Decimal(
-                str(raw).replace(",", "").replace("฿", "").replace("$", "").strip()
-            )
+            value = Decimal(raw_str.replace(",", "").replace("฿", "").replace("$", ""))
         except Exception:
             logger.warning("Skipping invalid allocation entry %s", name)
             continue

@@ -1,6 +1,7 @@
 ﻿from models.response import AppResponse
 from core.enums import ResponseType
-from core.messages import ACCESS_DENIED
+from core.exceptions import SheetsReadError
+from core.messages import ACCESS_DENIED, DATA_UPDATING
 from services.portfolio_service import allocation_balance_check, get_asset_allocation
 from services.user_mapping_service import get_user
 
@@ -13,7 +14,11 @@ class AllocationHandler:
         if not user_info or not user_info.enabled:
             return AppResponse(type=ResponseType.TEXT, text=ACCESS_DENIED)
 
-        allocation = await get_asset_allocation(user_info)
+        try:
+            allocation = await get_asset_allocation(user_info)
+        except SheetsReadError:
+            return AppResponse(type=ResponseType.TEXT, text=DATA_UPDATING)
+
         if allocation is None or allocation.is_empty:
             return AppResponse(type=ResponseType.TEXT, text="ไม่พบข้อมูลสัดส่วนพอร์ต")
 
