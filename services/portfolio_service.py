@@ -34,7 +34,7 @@ from models.portfolio import (
 from models.user import UserInfo
 from repositories.portfolio_repository import PortfolioRepository
 from services.cache import cached
-from services.sheets_service import get_sheet_as_dict, get_sheet_records
+from services.sheets_service import get_raw_range, get_sheet_as_dict, get_sheet_records
 
 logger = logging.getLogger(__name__)
 
@@ -80,8 +80,17 @@ class PortfolioService:
         self.repository = repository
 
     def get_portfolio(
-        self, spreadsheet_id: str, strict: bool = False
+        self,
+        spreadsheet_id: str,
+        strict: bool = False,
+        fx_rate: Decimal | None = None,
     ) -> ServiceResult[PortfolioHoldings]:
+        """
+        Build PortfolioHoldings from the raw Portfolio sheet (USD).
+
+        When ``fx_rate`` (THB per USD) is provided, unit prices are converted to
+        THB so downstream aggregates and the flex builder display ฿ correctly.
+        """
         try:
             fetch = self.repository.fetch_portfolio_rows(spreadsheet_id)
             rows = fetch.rows
@@ -89,11 +98,16 @@ class PortfolioService:
 
             for row in rows:
                 try:
+                    avg_cost = Decimal(row.avg_cost.replace(",", ""))
+                    current_price = Decimal(row.current_price.replace(",", ""))
+                    if fx_rate is not None:
+                        avg_cost = avg_cost * fx_rate
+                        current_price = current_price * fx_rate
                     item = PortfolioItem(
                         symbol=row.symbol,
-                        avg_cost=Decimal(row.avg_cost.replace(",", "")),
+                        avg_cost=avg_cost,
                         shares=Decimal(row.shares.replace(",", "")),
-                        current_price=Decimal(row.current_price.replace(",", "")),
+                        current_price=current_price,
                     )
                     items.append(item)
                 except (InvalidOperation, ValidationError, ValueError) as e:
@@ -126,18 +140,57 @@ async def get_cash_balance(user_info: UserInfo) -> Decimal:
     return Decimal("0")
 
 
+FX_RATE_CELL = "AssetAllocation!D1"
+
+
+async def get_fx_rate_thb_per_usd(user_info: UserInfo) -> Decimal:
+    """
+    Read the live THB/USD rate from AssetAllocation!D1.
+
+    The cell is expected to hold a formula such as
+    ``=1*GOOGLEFINANCE("CURRENCY:USDTHB")``; ``get_raw_range`` returns the
+    computed (formatted) value, so we parse that numeric string directly.
+    """
+    try:
+        rows = await asyncio.to_thread(
+            get_raw_range, user_info.spreadsheet_id, FX_RATE_CELL
+        )
+    except Exception as e:
+        raise SheetsReadError("Failed to read FX rate from AssetAllocation") from e
+
+    raw = ""
+    if rows and rows[0] and rows[0][0] is not None:
+        raw = str(rows[0][0]).replace(",", "").replace("฿", "").replace("$", "").strip()
+
+    if not raw:
+        raise PortfolioParseError("FX rate is missing in AssetAllocation!D1")
+
+    try:
+        rate = Decimal(raw)
+    except (InvalidOperation, ValueError) as e:
+        raise PortfolioParseError("FX rate is not numeric in AssetAllocation!D1") from e
+
+    if rate <= 0:
+        raise PortfolioParseError("FX rate must be positive in AssetAllocation!D1")
+
+    return rate
+
+
 @cached("holdings_index")
 async def _fetch_holdings_index(user_info: UserInfo) -> dict[str, HoldingBreakdown]:
     """
     Read the raw Portfolio sheet (Symbol|AvgCost|Shares|CurrentPrice) and build
-    an uppercase-symbol -> HoldingBreakdown dict. Market value, weight and
-    profit percent are derived here so holdings/winners/losers stay in sync with
-    the same source used by PortfolioService.
+    an uppercase-symbol -> HoldingBreakdown dict. The sheet is USD-only, so
+    market value and cost are converted to THB with the AssetAllocation FX rate;
+    weight and profit percent are ratios and therefore unaffected.
     """
     try:
         records = await asyncio.to_thread(get_sheet_records, user_info.spreadsheet_id, "Portfolio")
     except Exception as e:
         raise SheetsReadError("Failed to read Portfolio sheet") from e
+
+    rate = await get_fx_rate_thb_per_usd(user_info)
+    rate_f = float(rate)
 
     parsed: list[tuple[str, float, float, float]] = []
     for row in records:
@@ -147,12 +200,12 @@ async def _fetch_holdings_index(user_info: UserInfo) -> dict[str, HoldingBreakdo
         shares = _parse_float(row.get("Shares", "0"))
         avg_cost = _parse_float(row.get("AvgCost", "0"))
         current_price = _parse_float(row.get("CurrentPrice", "0"))
-        market_value = shares * current_price
-        cost = shares * avg_cost
-        if market_value <= 0:
+        market_value_usd = shares * current_price
+        cost_usd = shares * avg_cost
+        if market_value_usd <= 0:
             continue
-        profit_pct = 0.0 if cost <= 0 else ((market_value - cost) / cost) * 100
-        parsed.append((symbol, market_value, cost, profit_pct))
+        profit_pct = 0.0 if cost_usd <= 0 else ((market_value_usd - cost_usd) / cost_usd) * 100
+        parsed.append((symbol, market_value_usd * rate_f, cost_usd * rate_f, profit_pct))
 
     total = sum((market_value for _, market_value, _, _ in parsed), 0.0)
 

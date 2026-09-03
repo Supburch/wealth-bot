@@ -40,6 +40,13 @@ def mock_user() -> UserInfo:
     return UserInfo(user_id="U1", spreadsheet_id="test_sheet", role="user", enabled=True)
 
 
+@pytest.fixture(autouse=True)
+def _default_fx_rate():
+    """Default THB/USD rate = 1 so holdings tests see raw USD-derived numbers."""
+    with patch("services.portfolio_service.get_raw_range", return_value=[["1"]]):
+        yield
+
+
 async def test_get_cash_balance(mock_user):
     with patch("services.portfolio_service.get_sheet_as_dict", return_value=MOCK_ALLOCATION_DICT):
         from services.portfolio_service import get_cash_balance
@@ -143,4 +150,64 @@ def test_get_portfolio_unexpected_error_bubbles_up():
     repo.fetch_portfolio_rows.side_effect = KeyError("boom")
     with pytest.raises(KeyError):
         PortfolioService(repo).get_portfolio("sheet")
+
+
+# ── Currency conversion (USD → THB) ─────────────────────────────────────────────
+
+async def test_get_all_holdings_converts_usd_to_thb(mock_user):
+    """Holdings derived from the USD Portfolio sheet are converted to THB."""
+    rate = Decimal("32.94")
+    with patch("services.portfolio_service.get_sheet_records", return_value=MOCK_PORTFOLIO_RECORDS), \
+         patch("services.portfolio_service.get_raw_range", return_value=[[str(rate)]]):
+        from services.portfolio_service import get_all_holdings
+        result = await get_all_holdings(mock_user)
+
+    by_symbol = {h.symbol: h for h in result}
+    assert by_symbol["MSFT"].market_value == pytest.approx(400.0 * float(rate))
+    assert by_symbol["MSFT"].cost == pytest.approx(200.0 * float(rate))
+    # Ratios are currency-agnostic and must stay identical to the USD case.
+    assert by_symbol["MSFT"].profit_pct == 100.0
+    assert by_symbol["MSFT"].weight == pytest.approx(400 / 600 * 100)
+
+
+async def test_get_fx_rate_thb_per_usd_reads_cell(mock_user):
+    from services.portfolio_service import get_fx_rate_thb_per_usd
+    with patch("services.portfolio_service.get_raw_range", return_value=[["32.9445"]]):
+        rate = await get_fx_rate_thb_per_usd(mock_user)
+    assert rate == Decimal("32.9445")
+
+
+async def test_get_fx_rate_thb_per_usd_missing_raises(mock_user):
+    from core.exceptions import PortfolioParseError
+    from services.portfolio_service import get_fx_rate_thb_per_usd
+    with patch("services.portfolio_service.get_raw_range", return_value=[[""]]):
+        with pytest.raises(PortfolioParseError):
+            await get_fx_rate_thb_per_usd(mock_user)
+
+
+async def test_get_fx_rate_thb_per_usd_non_numeric_raises(mock_user):
+    from core.exceptions import PortfolioParseError
+    from services.portfolio_service import get_fx_rate_thb_per_usd
+    with patch("services.portfolio_service.get_raw_range", return_value=[["abc"]]):
+        with pytest.raises(PortfolioParseError):
+            await get_fx_rate_thb_per_usd(mock_user)
+
+
+def test_get_portfolio_converts_usd_to_thb():
+    """Class-based path converts unit prices to THB when fx_rate is provided."""
+    from unittest.mock import MagicMock
+    from models.portfolio import PortfolioRow
+    from services.portfolio_service import PortfolioService
+
+    fetch = MagicMock()
+    fetch.rows = [PortfolioRow(symbol="MSFT", avg_cost="100", shares="2", current_price="200")]
+    repo = MagicMock()
+    repo.fetch_portfolio_rows.return_value = fetch
+
+    result = PortfolioService(repo).get_portfolio("sheet", fx_rate=Decimal("32.94"))
+
+    assert result.is_success
+    item = result.data.items[0]
+    assert item.market_value == Decimal("13176.00")
+    assert item.total_cost == Decimal("6588.00")
 

@@ -2,7 +2,10 @@ from decimal import Decimal
 from models.portfolio import PortfolioHoldings
 
 
-def build_portfolio_flex(portfolio: PortfolioHoldings) -> dict:
+def build_portfolio_flex(
+    portfolio: PortfolioHoldings,
+    fx_rate: Decimal | None = None,
+) -> dict:
     """Return raw Flex Message contents dict. Does not wrap AppResponse."""
     sign = "+" if portfolio.total_profit >= 0 else ""
     profit_color = "#2ecc71" if portfolio.total_profit >= 0 else "#e74c3c"
@@ -37,6 +40,7 @@ def build_portfolio_flex(portfolio: PortfolioHoldings) -> dict:
                 row("กำไร",       f"{sign}฿{portfolio.total_profit:,.0f}", profit_color),
                 row("ผลตอบแทน",  f"{sign}{portfolio.roi_percent}%", profit_color),
                 row("จำนวน",     f"{portfolio.total_positions} หลักทรัพย์"),
+                *([row("เรท", f"฿{fx_rate:.2f}/USD", "#888888")] if fx_rate is not None else []),
             ]
         }
     }

@@ -110,7 +110,9 @@ class TodaySummary(BaseModel):
 
 class HoldingBreakdown(BaseModel):
     """
-    Single holding entry from the 'HoldingsBreakdown' sheet.
+    Single holding derived from the raw 'Portfolio' sheet (USD), converted to
+    THB using the AssetAllocation FX rate. market_value and cost are in THB;
+    weight and profit_pct are currency-agnostic ratios.
     Indexed by uppercase symbol for O(1) lookup when cached as a dict.
     """
     symbol: str

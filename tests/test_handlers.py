@@ -87,11 +87,13 @@ async def test_portfolio_handler_returns_rich():
     mock_service = MagicMock()
     mock_service.get_portfolio.return_value = ServiceResult(data=portfolio)
     with patch("handlers.portfolio_handler.get_user", AsyncMock(return_value=MOCK_USER)), \
+         patch("handlers.portfolio_handler.get_fx_rate_thb_per_usd", AsyncMock(return_value=Decimal("32.94"))), \
          patch("handlers.portfolio_handler.build_portfolio_flex", return_value={"type": "bubble"}):
         result = await PortfolioHandler(mock_service).handle(ALLOWED_USER)
     assert result.type == ResponseType.RICH
     assert result.alt_text == "สรุปพอร์ต"
     assert result.contents is not None
+    mock_service.get_portfolio.assert_called_once_with("test_sheet", False, Decimal("32.94"))
 
 
 async def test_portfolio_handler_unexpected_error_bubbles_up():
@@ -99,9 +101,25 @@ async def test_portfolio_handler_unexpected_error_bubbles_up():
     from handlers.portfolio_handler import PortfolioHandler
     mock_service = MagicMock()
     mock_service.get_portfolio.side_effect = KeyError("boom")
-    with patch("handlers.portfolio_handler.get_user", AsyncMock(return_value=MOCK_USER)):
+    with patch("handlers.portfolio_handler.get_user", AsyncMock(return_value=MOCK_USER)), \
+         patch("handlers.portfolio_handler.get_fx_rate_thb_per_usd", AsyncMock(return_value=Decimal("32.94"))):
         with pytest.raises(KeyError):
             await PortfolioHandler(mock_service).handle(ALLOWED_USER)
+
+
+async def test_portfolio_handler_fx_rate_error():
+    """A missing/invalid FX rate maps to FX_RATE_ERROR instead of crashing."""
+    from handlers.portfolio_handler import PortfolioHandler
+    from core.exceptions import SheetsReadError
+    from core.messages import FX_RATE_ERROR
+
+    mock_service = MagicMock()
+    with patch("handlers.portfolio_handler.get_user", AsyncMock(return_value=MOCK_USER)), \
+         patch("handlers.portfolio_handler.get_fx_rate_thb_per_usd", AsyncMock(side_effect=SheetsReadError("boom"))):
+        result = await PortfolioHandler(mock_service).handle(ALLOWED_USER)
+
+    assert result.type == ResponseType.TEXT
+    assert result.text == FX_RATE_ERROR
 
 
 # ── WealthSummaryHandler ───────────────────────────────────────────────────────
