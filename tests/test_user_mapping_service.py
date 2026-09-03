@@ -4,7 +4,7 @@ Focus: a failed user-mapping fetch must raise (not be swallowed into a cached
 ``{}``), so the ``@cached`` decorator never negative-caches a transient failure.
 """
 import pytest
-from unittest.mock import patch, AsyncMock
+from unittest.mock import patch
 
 from core.exceptions import SheetsReadError
 from services.cache import clear_cache
@@ -100,11 +100,8 @@ async def test_get_user_propagates_fetch_failure():
             await ums.get_user("U1")
 
 
-async def test_handler_bubbles_up_on_fetch_failure():
+async def test_today_handler_returns_removal_message():
     from handlers.today_handler import TodayHandler
-    with patch(
-        "handlers.today_handler.get_user",
-        AsyncMock(side_effect=ConnectionError("boom")),
-    ):
-        with pytest.raises(ConnectionError):
-            await TodayHandler().handle("U_UNKNOWN")
+    result = await TodayHandler().handle("U_UNKNOWN")
+    assert "วันนี้" in result.text
+    assert "สรุป" in result.text

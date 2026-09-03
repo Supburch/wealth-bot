@@ -8,9 +8,9 @@ Two access patterns co-exist in this module:
    PortfolioHoldings (domain model).  Used by PortfolioHandler.
 
 2. Module-level async functions
-   Read pre-computed summary sheets (PortfolioSummary, TodaySummary,
-   HoldingsBreakdown, AssetAllocation) and return presentation DTOs.
-   Used by the new handler-based architecture.
+   Read the authoritative AssetAllocation sheet and derive individual
+   holdings from the raw Portfolio sheet. Returns presentation DTOs used
+   by the handler-based architecture.
 """
 import asyncio
 import logging
@@ -30,9 +30,6 @@ from models.portfolio import (
     PortfolioHoldings,
     PortfolioItem,
     PortfolioRow,
-    PortfolioSummary,
-    TodaySummary,
-    WealthSummary,
 )
 from models.user import UserInfo
 from repositories.portfolio_repository import PortfolioRepository
@@ -119,64 +116,56 @@ class PortfolioService:
 
 # ── Module-level async functions (presentation DTOs) ──────────────────────────
 
-@cached("portfolio_summary")
-async def get_portfolio_summary(user_info: UserInfo) -> PortfolioSummary:
-    """Read pre-computed summary from 'PortfolioSummary' sheet (Metric|Value format)."""
-    try:
-        data = await asyncio.to_thread(get_sheet_as_dict, user_info.spreadsheet_id, "PortfolioSummary")
-    except Exception as e:
-        raise SheetsReadError("Failed to read PortfolioSummary sheet") from e
-    return PortfolioSummary(
-        portfolio_value=_parse_float(data["PortfolioValue"]),
-        cost_basis=_parse_float(data["CostBasis"]),
-        profit=_parse_float(data["Profit"]),
-        profit_pct=_parse_float(data["ProfitPct"]),
-        cash=_parse_float(data["Cash"]),
-    )
-
-
-@cached("today_summary")
-async def get_today_summary(user_info: UserInfo) -> TodaySummary:
-    """Read pre-computed summary from 'TodaySummary' sheet (Metric|Value format)."""
-    try:
-        data = await asyncio.to_thread(get_sheet_as_dict, user_info.spreadsheet_id, "TodaySummary")
-    except Exception as e:
-        raise SheetsReadError("Failed to read TodaySummary sheet") from e
-    return TodaySummary(
-        portfolio_value=_parse_float(data["PortfolioValue"]),
-        today_profit=_parse_float(data["TodayProfit"]),
-        today_profit_pct=_parse_float(data["TodayProfitPct"]),
-    )
+@cached("cash_balance")
+async def get_cash_balance(user_info: UserInfo) -> Decimal:
+    """Return the 'Cash' entry from AssetAllocation (the source of truth)."""
+    allocation = await get_asset_allocation(user_info)
+    for entry in allocation.entries:
+        if entry.name.strip().lower() == "cash":
+            return entry.value
+    return Decimal("0")
 
 
 @cached("holdings_index")
 async def _fetch_holdings_index(user_info: UserInfo) -> dict[str, HoldingBreakdown]:
     """
-    Fetch HoldingsBreakdown records and build an uppercase-symbol → HoldingBreakdown dict.
-    Cached per user for O(1) symbol lookup.
+    Read the raw Portfolio sheet (Symbol|AvgCost|Shares|CurrentPrice) and build
+    an uppercase-symbol -> HoldingBreakdown dict. Market value, weight and
+    profit percent are derived here so holdings/winners/losers stay in sync with
+    the same source used by PortfolioService.
     """
     try:
-        records = await asyncio.to_thread(get_sheet_records, user_info.spreadsheet_id, "HoldingsBreakdown")
+        records = await asyncio.to_thread(get_sheet_records, user_info.spreadsheet_id, "Portfolio")
     except Exception as e:
-        raise SheetsReadError("Failed to read HoldingsBreakdown sheet") from e
-    index: dict[str, HoldingBreakdown] = {}
+        raise SheetsReadError("Failed to read Portfolio sheet") from e
+
+    parsed: list[tuple[str, float, float, float]] = []
     for row in records:
         symbol = str(row.get("Symbol", "")).strip().upper()
         if not symbol:
             continue
-        try:
-            index[symbol] = HoldingBreakdown(
-                symbol=symbol,
-                market_value=_parse_float(row.get("MarketValue", "0")),
-                weight=_parse_float(row.get("Weight", "0")),
-                cost=_parse_float(row.get("Cost", "0")),
-                profit_pct=_parse_float(row.get("ProfitPct", "0")),
-            )
-        except (ValueError, KeyError) as e:
-            logger.warning(
-                "Skipping invalid holding row",
-                extra={"error_type": type(e).__name__},
-            )
+        shares = _parse_float(row.get("Shares", "0"))
+        avg_cost = _parse_float(row.get("AvgCost", "0"))
+        current_price = _parse_float(row.get("CurrentPrice", "0"))
+        market_value = shares * current_price
+        cost = shares * avg_cost
+        if market_value <= 0:
+            continue
+        profit_pct = 0.0 if cost <= 0 else ((market_value - cost) / cost) * 100
+        parsed.append((symbol, market_value, cost, profit_pct))
+
+    total = sum((market_value for _, market_value, _, _ in parsed), 0.0)
+
+    index: dict[str, HoldingBreakdown] = {}
+    for symbol, market_value, cost, profit_pct in parsed:
+        weight = 0.0 if total == 0 else (market_value / total) * 100
+        index[symbol] = HoldingBreakdown(
+            symbol=symbol,
+            market_value=market_value,
+            weight=weight,
+            cost=cost,
+            profit_pct=profit_pct,
+        )
     return index
 
 
@@ -198,35 +187,6 @@ async def get_holding_breakdown(
     """O(1) lookup of a single holding by symbol (case-insensitive)."""
     index = await _fetch_holdings_index(user_info)
     return index.get(symbol.upper())
-
-
-async def get_wealth_summary(user_info: UserInfo) -> WealthSummary:
-    """Composite: portfolio summary + top 3 holdings + allocation."""
-    summary = await get_portfolio_summary(user_info)
-    # get_top_holdings returns the full list of holdings sorted by weight
-    all_holdings = await get_top_holdings(user_info)
-
-    best_performer = None
-    worst_performer = None
-    if all_holdings:
-        by_profit = sorted(all_holdings, key=lambda h: h.profit_pct, reverse=True)
-        best_performer = by_profit[0].symbol
-        if len(by_profit) > 1:
-            worst_performer = by_profit[-1].symbol
-
-    try:
-        allocation = await get_asset_allocation(user_info)
-    except Exception:
-        logger.exception("Failed to fetch asset allocation for wealth summary")
-        allocation = None
-
-    return WealthSummary(
-        summary=summary, 
-        top_holdings=all_holdings[:3],
-        asset_allocation=allocation,
-        best_performer=best_performer,
-        worst_performer=worst_performer
-    )
 
 
 @cached("asset_allocation")

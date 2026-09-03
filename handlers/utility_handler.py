@@ -1,7 +1,7 @@
 ﻿from models.response import AppResponse
 from core.enums import ResponseType
 from core.messages import ACCESS_DENIED
-from services.portfolio_service import get_portfolio_summary
+from services.portfolio_service import get_cash_balance
 from services.user_mapping_service import get_user
 
 
@@ -23,13 +23,13 @@ class VersionHandler:
 
 
 class CashHandler:
-    """Returns available cash from the PortfolioSummary sheet."""
+    """Returns available cash from the AssetAllocation sheet (Cash entry)."""
 
     async def handle(self, user_id: str) -> AppResponse:
         user_info = await get_user(user_id)
         if not user_info or not user_info.enabled:
             return AppResponse(type=ResponseType.TEXT, text=ACCESS_DENIED)
 
-        data = await get_portfolio_summary(user_info)
-        text = f"💵 เงินสด\n\n฿{data.cash:,.0f}"
+        cash = await get_cash_balance(user_info)
+        text = f"💵 เงินสด\n\n฿{cash:,.0f}"
         return AppResponse(type=ResponseType.TEXT, text=text)

@@ -23,7 +23,7 @@ import pytest
 from unittest.mock import patch, AsyncMock, MagicMock
 from models.user import UserInfo
 from models.portfolio import (
-    PortfolioSummary, TodaySummary, HoldingBreakdown, WealthSummary,
+    HoldingBreakdown,
     AssetAllocation, AssetAllocationEntry,
 )
 from models.response import AppResponse
@@ -38,19 +38,11 @@ UNKNOWN_USER = "U_UNKNOWN"
 MOCK_USER = UserInfo(user_id=ALLOWED_USER, spreadsheet_id="test_sheet", role="user", enabled=True)
 MOCK_ADMIN = UserInfo(user_id=ADMIN_USER, spreadsheet_id="test_sheet", role="admin", enabled=True)
 
-MOCK_SUMMARY = PortfolioSummary(
-    portfolio_value=1_000_000.0, cost_basis=800_000.0,
-    profit=200_000.0, profit_pct=25.0, cash=50_000.0,
-)
-MOCK_TODAY = TodaySummary(
-    portfolio_value=1_000_000.0, today_profit=5_000.0, today_profit_pct=0.5,
-)
 MOCK_HOLDINGS = [
     HoldingBreakdown(symbol="AAPL", market_value=300_000.0, weight=30.0, cost=250_000.0, profit_pct=20.0),
     HoldingBreakdown(symbol="NVDA", market_value=200_000.0, weight=20.0, cost=100_000.0, profit_pct=100.0),
     HoldingBreakdown(symbol="TSLA", market_value=100_000.0, weight=10.0, cost=120_000.0, profit_pct=-16.7),
 ]
-MOCK_WEALTH = WealthSummary(summary=MOCK_SUMMARY, top_holdings=MOCK_HOLDINGS[:2])
 MOCK_AAPL = HoldingBreakdown(symbol="AAPL", market_value=300_000.0, weight=30.0, cost=250_000.0, profit_pct=20.0)
 MOCK_ALLOCATION = AssetAllocation(
     entries=[
@@ -70,12 +62,12 @@ def _user_side_effect(user_id: str):
 
 # ── Unauthorized ──────────────────────────────────────────────────────────────
 
-async def test_today_handler_unauthorized():
+async def test_today_handler_returns_removal_message():
     from handlers.today_handler import TodayHandler
-    with patch("handlers.today_handler.get_user", AsyncMock(return_value=None)):
-        result = await TodayHandler().handle(UNKNOWN_USER)
+    result = await TodayHandler().handle(UNKNOWN_USER)
     assert result.type == ResponseType.TEXT
-    assert result.text == ACCESS_DENIED
+    assert "วันนี้" in result.text
+    assert "สรุป" in result.text
 
 
 async def test_holdings_handler_unauthorized():
@@ -117,61 +109,31 @@ async def test_portfolio_handler_unexpected_error_bubbles_up():
 async def test_wealth_summary_handler_returns_text():
     from handlers.wealth_summary_handler import WealthSummaryHandler
     with patch("handlers.wealth_summary_handler.get_user", AsyncMock(return_value=MOCK_USER)), \
-         patch("handlers.wealth_summary_handler.get_wealth_summary", AsyncMock(return_value=MOCK_WEALTH)):
+         patch("handlers.wealth_summary_handler.get_asset_allocation", AsyncMock(return_value=MOCK_ALLOCATION)):
         result = await WealthSummaryHandler().handle(ALLOWED_USER)
     assert result.type == ResponseType.TEXT
     assert "สรุปพอร์ต" in result.text
-    assert "AAPL" in result.text
-    assert "ไม่ครบ" not in result.text
+    assert "Stocks" in result.text
+    assert "Cash" in result.text
 
 
-async def test_wealth_summary_handler_allocation_within_tolerance_no_warning():
+async def test_wealth_summary_handler_empty_allocation():
     from handlers.wealth_summary_handler import WealthSummaryHandler
-    wealth = WealthSummary(
-        summary=MOCK_SUMMARY,
-        top_holdings=MOCK_HOLDINGS[:2],
-        asset_allocation=AssetAllocation(
-            entries=[
-                AssetAllocationEntry(name="Stocks", value=Decimal("700000"), percent=Decimal("70")),
-                AssetAllocationEntry(name="Cash", value=Decimal("300000"), percent=Decimal("30")),
-            ]
-        ),
-    )
     with patch("handlers.wealth_summary_handler.get_user", AsyncMock(return_value=MOCK_USER)), \
-         patch("handlers.wealth_summary_handler.get_wealth_summary", AsyncMock(return_value=wealth)):
+         patch("handlers.wealth_summary_handler.get_asset_allocation", AsyncMock(return_value=AssetAllocation(entries=[]))):
         result = await WealthSummaryHandler().handle(ALLOWED_USER)
-    assert "ไม่ครบ" not in result.text
-
-
-async def test_wealth_summary_handler_allocation_out_of_tolerance_warns():
-    from handlers.wealth_summary_handler import WealthSummaryHandler
-    wealth = WealthSummary(
-        summary=MOCK_SUMMARY,
-        top_holdings=MOCK_HOLDINGS[:2],
-        asset_allocation=AssetAllocation(
-            entries=[
-                AssetAllocationEntry(name="Stocks", value=Decimal("700000"), percent=Decimal("70")),
-                AssetAllocationEntry(name="Cash", value=Decimal("250000"), percent=Decimal("25")),
-            ]
-        ),
-    )
-    with patch("handlers.wealth_summary_handler.get_user", AsyncMock(return_value=MOCK_USER)), \
-         patch("handlers.wealth_summary_handler.get_wealth_summary", AsyncMock(return_value=wealth)):
-        result = await WealthSummaryHandler().handle(ALLOWED_USER)
-    assert "ไม่ครบ" in result.text
-    assert "95.0%" in result.text
+    assert result.type == ResponseType.TEXT
+    assert "ไม่พบข้อมูลพอร์ต" in result.text
 
 
 # ── TodayHandler ──────────────────────────────────────────────────────────────
 
-async def test_today_handler_returns_rich():
+async def test_today_handler_returns_text():
     from handlers.today_handler import TodayHandler
-    with patch("handlers.today_handler.get_user", AsyncMock(return_value=MOCK_USER)), \
-         patch("handlers.today_handler.get_today_summary", AsyncMock(return_value=MOCK_TODAY)):
-        result = await TodayHandler().handle(ALLOWED_USER)
-    assert result.type == ResponseType.RICH
-    assert result.contents is not None
-    assert result.alt_text == "กำไรวันนี้"
+    result = await TodayHandler().handle(ALLOWED_USER)
+    assert result.type == ResponseType.TEXT
+    assert "วันนี้" in result.text
+    assert "สรุป" in result.text
 
 
 # ── HoldingsHandler ───────────────────────────────────────────────────────────
@@ -206,7 +168,7 @@ async def test_losers_handler_returns_rich():
 async def test_cash_handler_returns_cash():
     from handlers.utility_handler import CashHandler
     with patch("handlers.utility_handler.get_user", AsyncMock(return_value=MOCK_USER)), \
-         patch("handlers.utility_handler.get_portfolio_summary", AsyncMock(return_value=MOCK_SUMMARY)):
+         patch("handlers.utility_handler.get_cash_balance", AsyncMock(return_value=Decimal("50000.00"))):
         result = await CashHandler().handle(ALLOWED_USER)
     assert result.type == ResponseType.TEXT
     assert "50,000" in result.text
