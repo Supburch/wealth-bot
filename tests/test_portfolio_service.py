@@ -126,6 +126,40 @@ def test_parse_float_helper():
     assert _parse_float("  ") == 0.0
 
 
+def test_parse_float_handles_sheet_errors():
+    from services.portfolio_service import _parse_float
+    assert _parse_float("#N/A") == 0.0
+    assert _parse_float("#REF!") == 0.0
+    assert _parse_float("not-a-number") == 0.0
+
+
+def test_is_numeric_helper():
+    from services.portfolio_service import _is_numeric
+    assert _is_numeric("") is True
+    assert _is_numeric("123.45") is True
+    assert _is_numeric("฿1,234") is True
+    assert _is_numeric("#N/A") is False
+    assert _is_numeric("not-a-number") is False
+
+
+async def test_get_all_holdings_skips_unreadable_and_zero_rows(mock_user):
+    records = [
+        {"Symbol": "MSFT", "AvgCost": "100", "Shares": "2", "CurrentPrice": "200"},
+        {"Symbol": "BAD", "AvgCost": "10", "Shares": "#N/A", "CurrentPrice": "50"},
+        {"Symbol": "SOLD", "AvgCost": "10", "Shares": "0", "CurrentPrice": "50"},
+        {"Symbol": "NOPRICE", "AvgCost": "10", "Shares": "1", "CurrentPrice": "#N/A"},
+        {"Symbol": "V", "AvgCost": "200", "Shares": "1", "CurrentPrice": "100"},
+    ]
+    with patch("services.portfolio_service.get_sheet_records", return_value=records):
+        from services.portfolio_service import get_all_holdings
+        result = await get_all_holdings(mock_user)
+
+    by_symbol = {h.symbol: h for h in result}
+    assert set(by_symbol) == {"MSFT", "V"}
+    assert by_symbol["MSFT"].market_value == 400.0
+    assert by_symbol["V"].market_value == 100.0
+
+
 def test_get_portfolio_read_error_maps_to_message():
     """PortfolioService.get_portfolio maps PortfolioReadError to the user-facing message."""
     from unittest.mock import MagicMock

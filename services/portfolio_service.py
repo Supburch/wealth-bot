@@ -63,11 +63,34 @@ class PortfolioColumn(IntEnum):
 
 
 def _parse_float(value: object) -> float:
-    """Strip commas, currency symbols, percent signs, and convert to float."""
+    """Strip commas, currency symbols, percent signs, and convert to float.
+
+    Empty cells and spreadsheet error placeholders (e.g. ``#N/A``) resolve to
+    ``0.0`` so a single unreadable cell can never crash the holdings index.
+    """
     clean_val = str(value).replace(",", "").replace("฿", "").replace("$", "").replace("%", "").strip()
     if not clean_val:
         return 0.0
-    return float(clean_val)
+    try:
+        return float(clean_val)
+    except ValueError:
+        return 0.0
+
+
+def _is_numeric(value: object) -> bool:
+    """Return True if ``value`` is blank or a plain number (after cleanup).
+
+    Spreadsheet error placeholders such as ``#N/A`` are *not* numeric, which lets
+    callers distinguish an unreadable cell from a legitimately empty one.
+    """
+    clean_val = str(value).replace(",", "").replace("฿", "").replace("$", "").replace("%", "").strip()
+    if not clean_val:
+        return True
+    try:
+        float(clean_val)
+        return True
+    except ValueError:
+        return False
 
 
 
@@ -193,19 +216,46 @@ async def _fetch_holdings_index(user_info: UserInfo) -> dict[str, HoldingBreakdo
     rate_f = float(rate)
 
     parsed: list[tuple[str, float, float, float]] = []
+    skipped: list[str] = []
+
     for row in records:
         symbol = str(row.get("Symbol", "")).strip().upper()
         if not symbol:
             continue
-        shares = _parse_float(row.get("Shares", "0"))
+
+        shares_raw = str(row.get("Shares", "")).strip()
+        price_raw = str(row.get("CurrentPrice", "")).strip()
+
+        # Surface silent failures instead of quietly treating bad cells as 0.
+        if not _is_numeric(shares_raw):
+            skipped.append(f"{symbol}:Shares={shares_raw!r}")
+            logger.warning("Holdings: skipping %s, unreadable Shares=%r", symbol, shares_raw)
+            continue
+        if not _is_numeric(price_raw):
+            skipped.append(f"{symbol}:CurrentPrice={price_raw!r}")
+            logger.warning("Holdings: skipping %s, unreadable CurrentPrice=%r", symbol, price_raw)
+            continue
+
+        shares = _parse_float(shares_raw)
         avg_cost = _parse_float(row.get("AvgCost", "0"))
-        current_price = _parse_float(row.get("CurrentPrice", "0"))
+        current_price = _parse_float(price_raw)
+
+        if shares <= 0:
+            skipped.append(f"{symbol}:Shares=0")
+            logger.warning("Holdings: skipping %s with zero/empty Shares", symbol)
+            continue
+        if current_price <= 0:
+            skipped.append(f"{symbol}:CurrentPrice=0")
+            logger.warning("Holdings: skipping %s with zero/empty CurrentPrice", symbol)
+            continue
+
         market_value_usd = shares * current_price
         cost_usd = shares * avg_cost
-        if market_value_usd <= 0:
-            continue
         profit_pct = 0.0 if cost_usd <= 0 else ((market_value_usd - cost_usd) / cost_usd) * 100
         parsed.append((symbol, market_value_usd * rate_f, cost_usd * rate_f, profit_pct))
+
+    if skipped:
+        logger.warning("Holdings index: skipped %d row(s): %s", len(skipped), "; ".join(skipped))
 
     total = sum((market_value for _, market_value, _, _ in parsed), 0.0)
 
