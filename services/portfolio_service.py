@@ -347,6 +347,29 @@ async def get_asset_allocation(user_info: UserInfo) -> AssetAllocation:
     return AssetAllocation(entries=entries)
 
 
+async def get_dr_pending_flags(user_info: UserInfo) -> int:
+    """Read the ⚠️ pending-review counter from 'from Streaming-DR'!O1.
+
+    Returns 0 when the cell is missing, blank, or unreadable so a transient
+    read error can never break the summary command.
+    """
+    try:
+        rows = await asyncio.to_thread(
+            get_raw_range, user_info.spreadsheet_id, "from Streaming-DR!O1"
+        )
+    except Exception:
+        return 0
+    if not rows or not rows[0]:
+        return 0
+    raw = str(rows[0][0]).strip()
+    if not raw or raw.startswith("#"):
+        return 0
+    try:
+        return int(float(raw.replace(",", "")))
+    except ValueError:
+        return 0
+
+
 ALLOCATION_TOLERANCE = Decimal("0.5")
 
 

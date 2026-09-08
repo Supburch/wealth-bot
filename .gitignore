@@ -22,3 +22,7 @@ venv/
 # OS
 .DS_Store
 Thumbs.db
+
+# Scratch files (debug/one-off — never commit)
+_*.py
+_*.txt

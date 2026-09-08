@@ -127,12 +127,24 @@ async def test_portfolio_handler_fx_rate_error():
 async def test_wealth_summary_handler_returns_text():
     from handlers.wealth_summary_handler import WealthSummaryHandler
     with patch("handlers.wealth_summary_handler.get_user", AsyncMock(return_value=MOCK_USER)), \
-         patch("handlers.wealth_summary_handler.get_asset_allocation", AsyncMock(return_value=MOCK_ALLOCATION)):
+         patch("handlers.wealth_summary_handler.get_asset_allocation", AsyncMock(return_value=MOCK_ALLOCATION)), \
+         patch("handlers.wealth_summary_handler.get_dr_pending_flags", AsyncMock(return_value=0)):
         result = await WealthSummaryHandler().handle(ALLOWED_USER)
     assert result.type == ResponseType.TEXT
     assert "สรุปพอร์ต" in result.text
     assert "Stocks" in result.text
     assert "Cash" in result.text
+    assert "รอตรวจสอบ" not in result.text
+
+
+async def test_wealth_summary_handler_appends_pending_warning():
+    from handlers.wealth_summary_handler import WealthSummaryHandler
+    with patch("handlers.wealth_summary_handler.get_user", AsyncMock(return_value=MOCK_USER)), \
+         patch("handlers.wealth_summary_handler.get_asset_allocation", AsyncMock(return_value=MOCK_ALLOCATION)), \
+         patch("handlers.wealth_summary_handler.get_dr_pending_flags", AsyncMock(return_value=2)):
+        result = await WealthSummaryHandler().handle(ALLOWED_USER)
+    assert result.type == ResponseType.TEXT
+    assert "⚠️ มี 2 รายการรอตรวจสอบ" in result.text
 
 
 async def test_wealth_summary_handler_empty_allocation():
