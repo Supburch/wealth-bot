@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     GOOGLE_CREDENTIALS_JSON: str = Field(min_length=1)
     MASTER_SPREADSHEET_ID: str = ""
     SPREADSHEET_ID: str = ""
+    TEST_MASTER_SPREADSHEET_ID: str = ""
+    TEST_SPREADSHEET_ID: str = ""
 
     APP_VERSION: str = "1.0.0"
     LOG_LEVEL: str = "INFO"
