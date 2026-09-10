@@ -130,6 +130,23 @@ def _require_test_sheet_id(name: str, value: str, production_value: str) -> str:
     return value
 
 
+def _confirm_destination(sh: gspread.Spreadsheet, label: str) -> None:
+    """Final human checkpoint: require retyping the destination sheet title
+    before overwriting anything, so a wrong-but-real spreadsheet id is caught
+    by a person instead of slipping past the id guards.
+    """
+    title = sh.title
+    try:
+        answer = input(
+            f"\n⚠️  About to overwrite {label} '{title}'\n"
+            "   Type the sheet title to confirm: "
+        )
+    except EOFError:
+        sys.exit("\n❌ Cancelled: no interactive input to confirm the sheet title.\n")
+    if answer.strip() != title:
+        sys.exit("\n❌ Cancelled: sheet title did not match — nothing was written.\n")
+
+
 def _write_sheet(sh: gspread.Spreadsheet, title: str, rows: list[list]) -> None:
     try:
         ws = sh.worksheet(title)
@@ -160,6 +177,7 @@ def main() -> None:
 
     # 1. TEST Portfolio spreadsheet (per-user)
     portfolio = client.open_by_key(test_portfolio_id)
+    _confirm_destination(portfolio, "TEST Portfolio spreadsheet")
     print(f"📈 TEST Portfolio spreadsheet: {portfolio.id}\n")
     _write_sheet(portfolio, "Portfolio", PORTFOLIO)
     _write_sheet(portfolio, "PortfolioSummary", PORTFOLIO_SUMMARY)
@@ -169,6 +187,7 @@ def main() -> None:
 
     # 2. TEST Master spreadsheet (Users tab)
     master = client.open_by_key(test_master_id)
+    _confirm_destination(master, "TEST Master spreadsheet")
     print(f"\n🗂  TEST Master spreadsheet: {master.id}\n")
     users = [
         ["LINE_USER_ID", "SPREADSHEET_ID", "ROLE", "ENABLED"],
