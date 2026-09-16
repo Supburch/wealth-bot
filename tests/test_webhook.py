@@ -99,6 +99,36 @@ def test_callback_valid_signature_processes(client):
     mock_api.reply_message.assert_called_once()
 
 
+def test_callback_appends_chart_image_message(client):
+    """An AppResponse with image_url sends the text/flex message then an image."""
+    from linebot.v3.messaging import ImageMessage
+
+    body = _message_body()
+    with patch.object(
+        main.router,
+        "route_command",
+        AsyncMock(
+            return_value=AppResponse(
+                text="ok", image_url="https://quickchart.io/chart?c=x"
+            )
+        ),
+    ), patch("main.ApiClient"), patch("main.MessagingApi") as mock_messaging_cls:
+        mock_api = mock_messaging_cls.return_value
+        resp = client.post(
+            "/callback",
+            content=body,
+            headers={"X-Line-Signature": _sign(body)},
+        )
+
+    assert resp.status_code == 200
+    request = mock_api.reply_message.call_args.args[0]
+    messages = request.messages
+    assert len(messages) == 2
+    assert isinstance(messages[1], ImageMessage)
+    assert messages[1].original_content_url == "https://quickchart.io/chart?c=x"
+    assert messages[1].preview_image_url == "https://quickchart.io/chart?c=x"
+
+
 def test_callback_reply_message_failure_returns_200(client, caplog):
     body = _message_body()
     with patch.object(

@@ -7,3 +7,4 @@ class AppResponse(BaseModel):
     text: Optional[str] = None
     alt_text: Optional[str] = None
     contents: Optional[Dict[str, Any]] = None
+    image_url: Optional[str] = None

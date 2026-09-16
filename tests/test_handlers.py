@@ -122,6 +122,52 @@ async def test_portfolio_handler_fx_rate_error():
     assert result.text == FX_RATE_ERROR
 
 
+async def test_portfolio_handler_includes_chart_image_url():
+    from handlers.portfolio_handler import PortfolioHandler
+    from services.portfolio_service import ServiceResult
+    from models.portfolio import PortfolioResult, PortfolioHoldings, PortfolioItem
+
+    item = PortfolioItem(
+        symbol="AAPL", avg_cost=Decimal("100"), shares=Decimal("10"), current_price=Decimal("150")
+    )
+    portfolio = PortfolioResult(
+        us_holdings=PortfolioHoldings(items=[item]),
+        dr_value=Decimal("500"),
+        dr_positions=1,
+        dr_skipped=0,
+    )
+    mock_service = MagicMock()
+    mock_service.get_portfolio.return_value = ServiceResult(data=portfolio)
+    with patch("handlers.portfolio_handler.get_user", AsyncMock(return_value=MOCK_USER)), \
+         patch("handlers.portfolio_handler.get_fx_rate_thb_per_usd", AsyncMock(return_value=Decimal("32.94"))), \
+         patch("handlers.portfolio_handler.build_portfolio_flex", return_value={"type": "bubble"}):
+        result = await PortfolioHandler(mock_service).handle(ALLOWED_USER)
+
+    assert result.type == ResponseType.RICH
+    assert result.image_url is not None
+    assert result.image_url.startswith("https://quickchart.io/chart?c=")
+
+
+async def test_portfolio_handler_chart_failure_still_returns_rich():
+    """A chart-service failure must not drop the numeric Flex message."""
+    from handlers.portfolio_handler import PortfolioHandler
+    from services.portfolio_service import ServiceResult
+
+    portfolio = MagicMock()
+    portfolio.is_empty = False
+    mock_service = MagicMock()
+    mock_service.get_portfolio.return_value = ServiceResult(data=portfolio)
+    with patch("handlers.portfolio_handler.get_user", AsyncMock(return_value=MOCK_USER)), \
+         patch("handlers.portfolio_handler.get_fx_rate_thb_per_usd", AsyncMock(return_value=Decimal("32.94"))), \
+         patch("handlers.portfolio_handler.build_portfolio_flex", return_value={"type": "bubble"}), \
+         patch("handlers.portfolio_handler.get_cached_chart_url", AsyncMock(side_effect=Exception("boom"))):
+        result = await PortfolioHandler(mock_service).handle(ALLOWED_USER)
+
+    assert result.type == ResponseType.RICH
+    assert result.contents is not None
+    assert result.image_url is None
+
+
 # ── WealthSummaryHandler ───────────────────────────────────────────────────────
 
 async def test_wealth_summary_handler_returns_text():
@@ -272,6 +318,30 @@ async def test_allocation_handler_out_of_tolerance_warns():
         result = await AllocationHandler().handle(ALLOWED_USER)
     assert "ไม่ครบ" in result.text
     assert "95.0%" in result.text
+
+
+async def test_allocation_handler_includes_chart_image_url():
+    from handlers.allocation_handler import AllocationHandler
+    with patch("handlers.allocation_handler.get_user", AsyncMock(return_value=MOCK_USER)), \
+         patch("handlers.allocation_handler.get_asset_allocation", AsyncMock(return_value=MOCK_ALLOCATION)):
+        result = await AllocationHandler().handle(ALLOWED_USER)
+
+    assert result.type == ResponseType.TEXT
+    assert result.image_url is not None
+    assert result.image_url.startswith("https://quickchart.io/chart?c=")
+
+
+async def test_allocation_handler_chart_failure_still_returns_text():
+    """A chart-service failure must not drop the numeric text message."""
+    from handlers.allocation_handler import AllocationHandler
+    with patch("handlers.allocation_handler.get_user", AsyncMock(return_value=MOCK_USER)), \
+         patch("handlers.allocation_handler.get_asset_allocation", AsyncMock(return_value=MOCK_ALLOCATION)), \
+         patch("handlers.allocation_handler.get_cached_chart_url", AsyncMock(side_effect=Exception("boom"))):
+        result = await AllocationHandler().handle(ALLOWED_USER)
+
+    assert result.type == ResponseType.TEXT
+    assert "Stocks" in result.text
+    assert result.image_url is None
 
 
 # ── Symbol Lookup ─────────────────────────────────────────────────────────────

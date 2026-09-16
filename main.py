@@ -7,7 +7,7 @@ from linebot.v3 import WebhookParser
 from linebot.v3.exceptions import InvalidSignatureError
 from linebot.v3.messaging import (
     Configuration, ApiClient, MessagingApi,
-    ReplyMessageRequest, TextMessage, FlexMessage, FlexContainer,
+    ReplyMessageRequest, TextMessage, FlexMessage, FlexContainer, ImageMessage,
 )
 from linebot.v3.webhooks import MessageEvent, TextMessageContent
 
@@ -91,6 +91,25 @@ def _build_line_message(response: AppResponse):
     return TextMessage(text=response.text or "")
 
 
+def _build_line_messages(response: AppResponse) -> list:
+    """Build the ordered LINE messages for a single AppResponse.
+
+    The primary text/flex message always comes first; when ``image_url`` is
+    present, a chart image (QuickChart URL) is appended as a second
+    ImageMessage. Chart delivery is best-effort — the text/flex message is
+    independent of it.
+    """
+    messages = [_build_line_message(response)]
+    if response.image_url:
+        messages.append(
+            ImageMessage(
+                original_content_url=response.image_url,
+                preview_image_url=response.image_url,
+            )
+        )
+    return messages
+
+
 @app.api_route("/health", methods=["GET", "HEAD"], response_model=HealthDto)
 async def health_check():
     sheets_ok = await check_sheets_health()
@@ -142,7 +161,7 @@ async def line_webhook(request: Request, x_line_signature: str = Header(None)):
                     line_bot_api.reply_message(
                         ReplyMessageRequest(
                             reply_token=event.reply_token,
-                            messages=[_build_line_message(response)],
+                            messages=_build_line_messages(response),
                         )
                     )
                 except Exception:
