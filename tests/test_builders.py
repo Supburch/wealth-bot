@@ -11,6 +11,7 @@ from models.portfolio import (
     HoldingBreakdown,
     PortfolioHoldings,
     PortfolioItem,
+    PortfolioResult,
     TodaySummary,
 )
 from models.validation import ValidationIssue, ValidationSummary
@@ -38,9 +39,78 @@ def test_build_portfolio_flex():
         shares=Decimal("10"),
         current_price=Decimal("150"),
     )
-    flex = build_portfolio_flex(PortfolioHoldings(items=[item]))
+    result = PortfolioResult(
+        us_holdings=PortfolioHoldings(items=[item]),
+        dr_value=Decimal("500"),
+        dr_positions=1,
+        dr_skipped=0,
+    )
+    flex = build_portfolio_flex(result)
     assert flex["type"] == "bubble"
     assert flex["body"]["contents"]
+
+    texts = [
+        c["text"]
+        for c in flex["body"]["contents"]
+        if isinstance(c, dict) and c.get("type") == "text"
+    ]
+    assert not any("รอตรวจสอบ" in t for t in texts)
+
+
+def test_build_portfolio_flex_shows_dr_warning():
+    item = PortfolioItem(
+        symbol="AAPL",
+        avg_cost=Decimal("100"),
+        shares=Decimal("10"),
+        current_price=Decimal("150"),
+    )
+    result = PortfolioResult(
+        us_holdings=PortfolioHoldings(items=[item]),
+        dr_value=Decimal("500"),
+        dr_positions=1,
+        dr_skipped=2,
+    )
+    flex = build_portfolio_flex(result)
+
+    texts = [
+        c["text"]
+        for c in flex["body"]["contents"]
+        if isinstance(c, dict) and c.get("type") == "text"
+    ]
+    assert any("รอตรวจสอบ" in t for t in texts)
+
+
+def test_build_portfolio_flex_shows_us_profit_only():
+    item = PortfolioItem(
+        symbol="AAPL",
+        avg_cost=Decimal("100"),
+        shares=Decimal("10"),
+        current_price=Decimal("150"),
+    )
+    result = PortfolioResult(
+        us_holdings=PortfolioHoldings(items=[item]),
+        dr_value=Decimal("500"),
+        dr_positions=1,
+        dr_skipped=0,
+    )
+    flex = build_portfolio_flex(result)
+
+    profit_value = None
+    for c in flex["body"]["contents"]:
+        if not (isinstance(c, dict) and c.get("type") == "box"):
+            continue
+        texts = [
+            t.get("text")
+            for t in c.get("contents", [])
+            if isinstance(t, dict) and t.get("type") == "text"
+        ]
+        if texts and texts[0] == "กำไร/ขาดทุน":
+            profit_value = texts[1]
+            break
+
+    assert profit_value is not None
+    assert "+฿500" in profit_value
+    assert "+50.00%" in profit_value
 
 
 def test_build_today_flex():

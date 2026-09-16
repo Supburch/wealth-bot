@@ -25,12 +25,25 @@ class PortfolioRow(BaseModel):
     current_price: str
 
 
+class DrHolding(BaseModel):
+    """A DR (depositary receipt) position read from the 'from Streaming-DR' sheet.
+
+    DR positions are THB-denominated and carry a pre-computed market value in
+    column M, so no FX conversion applies.
+    """
+
+    symbol: str
+    value_thb: str
+
+
 class PortfolioItem(BaseModel):
     """Parsed position with computed financial properties."""
     symbol: str
     avg_cost: Decimal
     shares: Decimal
     current_price: Decimal
+    currency: str = "USD"
+    source: str = "us"
 
     @model_validator(mode="after")
     def validate_positive_values(self) -> "PortfolioItem":
@@ -85,6 +98,38 @@ class PortfolioHoldings(BaseModel):
     @property
     def is_empty(self) -> bool:
         return len(self.items) == 0
+
+
+class PortfolioResult(BaseModel):
+    """Aggregate result for the 'พอร์ต' command.
+
+    Combines USD-denominated holdings (already converted to THB) with DR
+    (depositary receipt) positions, which are THB-denominated at the source and
+    therefore added without any FX conversion.
+    """
+
+    us_holdings: PortfolioHoldings
+    dr_value: Decimal = Decimal("0")
+    dr_positions: int = 0
+    dr_skipped: int = 0
+
+    @property
+    def us_value(self) -> Decimal:
+        """Total market value of USD holdings (already in THB)."""
+        return self.us_holdings.total_market_value
+
+    @property
+    def total_value(self) -> Decimal:
+        """Combined market value (USD holdings + DR), both in THB."""
+        return (self.us_value + self.dr_value).quantize(TWOPLACES)
+
+    @property
+    def total_positions(self) -> int:
+        return self.us_holdings.total_positions + self.dr_positions
+
+    @property
+    def is_empty(self) -> bool:
+        return self.us_holdings.is_empty and self.dr_value == 0
 
 
 # ── Presentation / Response DTOs ───────────────────────────────────────────────

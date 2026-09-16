@@ -265,17 +265,92 @@ def test_get_portfolio_converts_usd_to_thb():
     """Class-based path converts unit prices to THB when fx_rate is provided."""
     from unittest.mock import MagicMock
     from models.portfolio import PortfolioRow
+    from repositories.portfolio_repository import DrFetchResult
     from services.portfolio_service import PortfolioService
 
     fetch = MagicMock()
     fetch.rows = [PortfolioRow(symbol="MSFT", avg_cost="100", shares="2", current_price="200")]
     repo = MagicMock()
     repo.fetch_portfolio_rows.return_value = fetch
+    repo.fetch_dr_holdings.return_value = DrFetchResult(holdings=[], skipped_count=0)
 
     result = PortfolioService(repo).get_portfolio("sheet", fx_rate=Decimal("32.94"))
 
     assert result.is_success
-    item = result.data.items[0]
+    item = result.data.us_holdings.items[0]
     assert item.market_value == Decimal("13176.00")
     assert item.total_cost == Decimal("6588.00")
+    assert result.data.dr_value == Decimal("0")
+    assert result.data.total_value == Decimal("13176.00")
+
+
+# ── DR aggregation (US + DR combined) ──────────────────────────────────────────
+
+def _portfolio_repo(us_rows, dr_holdings, skipped_count=0):
+    from unittest.mock import MagicMock
+    from repositories.portfolio_repository import DrFetchResult
+
+    fetch = MagicMock()
+    fetch.rows = us_rows
+    repo = MagicMock()
+    repo.fetch_portfolio_rows.return_value = fetch
+    repo.fetch_dr_holdings.return_value = DrFetchResult(
+        holdings=dr_holdings, skipped_count=skipped_count
+    )
+    return repo
+
+
+def test_get_portfolio_includes_dr_value():
+    """DR rows without a flag are summed in THB and added to the combined total."""
+    from models.portfolio import DrHolding, PortfolioRow
+    from services.portfolio_service import PortfolioService
+
+    repo = _portfolio_repo(
+        [PortfolioRow(symbol="MSFT", avg_cost="100", shares="2", current_price="200")],
+        [DrHolding(symbol="AAPL80", value_thb="฿5,000.00")],
+    )
+    result = PortfolioService(repo).get_portfolio("sheet", fx_rate=Decimal("32.94"))
+
+    assert result.is_success
+    assert result.data.us_value == Decimal("13176.00")
+    assert result.data.dr_value == Decimal("5000.00")
+    assert result.data.total_value == Decimal("18176.00")
+    assert result.data.dr_skipped == 0
+    assert result.data.total_positions == 2
+
+
+def test_get_portfolio_skips_flagged_dr():
+    """Flagged DR rows are excluded from totals and surfaced via dr_skipped."""
+    from models.portfolio import DrHolding, PortfolioRow
+    from services.portfolio_service import PortfolioService
+
+    repo = _portfolio_repo(
+        [PortfolioRow(symbol="MSFT", avg_cost="100", shares="2", current_price="200")],
+        [DrHolding(symbol="AAPL80", value_thb="5000")],
+        skipped_count=1,
+    )
+    result = PortfolioService(repo).get_portfolio("sheet", fx_rate=Decimal("32.94"))
+
+    assert result.is_success
+    assert result.data.dr_value == Decimal("5000.00")
+    assert result.data.dr_skipped == 1
+    assert result.data.total_value == Decimal("18176.00")
+
+
+def test_get_portfolio_with_no_dr():
+    """An empty DR sheet yields dr_value=0 and no skipped rows."""
+    from models.portfolio import PortfolioRow
+    from services.portfolio_service import PortfolioService
+
+    repo = _portfolio_repo(
+        [PortfolioRow(symbol="MSFT", avg_cost="100", shares="2", current_price="200")],
+        [],
+    )
+    result = PortfolioService(repo).get_portfolio("sheet", fx_rate=Decimal("32.94"))
+
+    assert result.is_success
+    assert result.data.dr_value == Decimal("0")
+    assert result.data.dr_skipped == 0
+    assert result.data.total_value == Decimal("13176.00")
+    assert result.data.total_positions == 1
 

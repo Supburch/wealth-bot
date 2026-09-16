@@ -7,10 +7,11 @@ from typing import Any, Callable, Sequence
 
 import gspread
 import requests
-from gspread.exceptions import APIError
+from gspread.exceptions import APIError, WorksheetNotFound
 from google.oauth2.service_account import Credentials
 
 from config import settings
+from core.exceptions import SheetNotFoundError
 from core.redaction import mask_id
 
 logger = logging.getLogger(__name__)
@@ -224,9 +225,15 @@ def get_raw_range(spreadsheet_id: str, a1_range: str) -> list[list[str]]:
         sh = client.open_by_key(spreadsheet_id)
         if "!" in a1_range:
             sheet_title, cell_range = a1_range.split("!", 1)
-            ws = sh.worksheet(sheet_title)
+            try:
+                ws = sh.worksheet(sheet_title)
+            except WorksheetNotFound as e:
+                raise SheetNotFoundError(sheet_title) from e
             return ws.get(cell_range)
-        ws = sh.worksheet(a1_range)
+        try:
+            ws = sh.worksheet(a1_range)
+        except WorksheetNotFound as e:
+            raise SheetNotFoundError(a1_range) from e
         return ws.get_all_values()
 
     last_exc: Exception | None = None

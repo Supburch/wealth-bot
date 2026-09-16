@@ -26,9 +26,11 @@ from core.messages import DATA_UPDATING, PORTFOLIO_PARSE_ERROR, PORTFOLIO_READ_E
 from models.portfolio import (
     AssetAllocation,
     AssetAllocationEntry,
+    DrHolding,
     HoldingBreakdown,
     PortfolioHoldings,
     PortfolioItem,
+    PortfolioResult,
     PortfolioRow,
 )
 from models.user import UserInfo
@@ -101,6 +103,31 @@ def _is_error_value(value: object) -> bool:
     return s.startswith("#") or s == "N/A"
 
 
+def _sum_dr_holdings(holdings: list[DrHolding]) -> tuple[Decimal, int]:
+    """Sum DR market values (THB) and count valid DR positions.
+
+    DR values are already THB, so no FX conversion applies here. Blank,
+    non-numeric, and negative values are skipped with a warning.
+    """
+    total = Decimal("0")
+    count = 0
+    for holding in holdings:
+        raw = holding.value_thb.replace(",", "").replace("฿", "").replace("$", "").strip()
+        if not raw:
+            continue
+        try:
+            value = Decimal(raw)
+        except (InvalidOperation, ValueError):
+            logger.warning("Skipping DR holding with unreadable value %r", holding.symbol)
+            continue
+        if value < 0:
+            logger.warning("Skipping DR holding with negative value %r", holding.symbol)
+            continue
+        total += value
+        count += 1
+    return total.quantize(TWOPLACES), count
+
+
 # ── Class-based PortfolioService (domain) ─────────────────────────────────────
 
 class PortfolioService:
@@ -114,12 +141,14 @@ class PortfolioService:
         spreadsheet_id: str,
         strict: bool = False,
         fx_rate: Decimal | None = None,
-    ) -> ServiceResult[PortfolioHoldings]:
+    ) -> ServiceResult[PortfolioResult]:
         """
-        Build PortfolioHoldings from the raw Portfolio sheet (USD).
+        Build a combined portfolio from the raw Portfolio sheet (USD) plus the
+        DR positions in the 'from Streaming-DR' sheet (THB).
 
-        When ``fx_rate`` (THB per USD) is provided, unit prices are converted to
-        THB so downstream aggregates and the flex builder display ฿ correctly.
+        USD unit prices are converted to THB with ``fx_rate``; DR values are
+        already THB and are added as-is. The result separates the two sources so
+        the presentation layer can show them as distinct blocks.
         """
         try:
             fetch = self.repository.fetch_portfolio_rows(spreadsheet_id)
@@ -138,6 +167,8 @@ class PortfolioService:
                         avg_cost=avg_cost,
                         shares=Decimal(row.shares.replace(",", "")),
                         current_price=current_price,
+                        currency="USD",
+                        source="us",
                     )
                     items.append(item)
                 except (InvalidOperation, ValidationError, ValueError) as e:
@@ -150,7 +181,19 @@ class PortfolioService:
                             f"Error parsing row for symbol {row.symbol}: {e}"
                         ) from e
 
-            return ServiceResult(data=PortfolioHoldings(items=items))
+            us_holdings = PortfolioHoldings(items=items)
+
+            dr_fetch = self.repository.fetch_dr_holdings(spreadsheet_id)
+            dr_value, dr_positions = _sum_dr_holdings(dr_fetch.holdings)
+
+            return ServiceResult(
+                data=PortfolioResult(
+                    us_holdings=us_holdings,
+                    dr_value=dr_value,
+                    dr_positions=dr_positions,
+                    dr_skipped=dr_fetch.skipped_count,
+                )
+            )
 
         except PortfolioReadError:
             return ServiceResult(error=PORTFOLIO_READ_ERROR)
