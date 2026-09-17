@@ -30,24 +30,42 @@ def _decode_config(url: str) -> dict:
     return json.loads(encoded)
 
 
-def test_build_pie_chart_url_encodes_labels_and_values():
+def test_build_pie_chart_url_shows_percentage_labels():
     labels = ["Cash", "Stock USA", "Stock DR"]
     values = [100.0, 200.0, 50.0]
     url = build_pie_chart_url(labels, values)
     config = _decode_config(url)
     assert config["type"] == "pie"
-    assert config["data"]["labels"] == labels
+    assert config["data"]["labels"] == [
+        "Cash (28.6%)",
+        "Stock USA (57.1%)",
+        "Stock DR (14.3%)",
+    ]
     assert config["data"]["datasets"] == [{"data": values}]
+    # Raw THB values must not be rendered on the slices.
+    assert config["options"]["plugins"]["datalabels"]["display"] is False
 
 
-def test_build_bar_chart_url_encodes_labels_and_values():
+def test_build_pie_chart_url_zero_total_keeps_plain_labels():
+    labels = ["Cash", "Stock USA"]
+    values = [0.0, 0.0]
+    url = build_pie_chart_url(labels, values)
+    config = _decode_config(url)
+    assert config["data"]["labels"] == labels
+
+
+def test_build_bar_chart_url_has_label_and_hides_legend():
     labels = ["Stock USA", "Stock DR"]
     values = [13176.0, 5000.0]
     url = build_bar_chart_url(labels, values)
     config = _decode_config(url)
     assert config["type"] == "bar"
     assert config["data"]["labels"] == labels
-    assert config["data"]["datasets"] == [{"data": values}]
+    dataset = config["data"]["datasets"][0]
+    assert dataset["label"] == "มูลค่า (บาท)"
+    assert dataset["data"] == values
+    # Legend disabled so no "undefined" entry is rendered.
+    assert config["options"]["plugins"]["legend"]["display"] is False
 
 
 async def test_get_cached_chart_url_returns_url_for_type():

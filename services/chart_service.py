@@ -28,24 +28,52 @@ def _build_chart_url(chart_config: dict) -> str:
 
 
 def build_pie_chart_url(labels: list[str], values: list[float]) -> str:
-    """Build a pie-chart URL for the 'สัดส่วน' command (asset-class mix)."""
+    """Build a pie-chart URL for the 'สัดส่วน' command (asset-class mix).
+
+    Percentages are computed here in Python (no JS ``formatter`` is embedded in
+    the URL) and appended to the legend labels, e.g. ``"Cash (25.0%)"``. Slice
+    data labels are disabled so raw THB values don't render on the chart.
+    """
+    total = sum(values)
+    labeled = (
+        [f"{label} ({value / total * 100:.1f}%)" for label, value in zip(labels, values)]
+        if total
+        else list(labels)
+    )
+
     config = {
         "type": "pie",
         "data": {
-            "labels": labels,
+            "labels": labeled,
             "datasets": [{"data": values}],
+        },
+        "options": {
+            "plugins": {
+                "legend": {"display": True},
+                "datalabels": {"display": False},
+            }
         },
     }
     return _build_chart_url(config)
 
 
 def build_bar_chart_url(labels: list[str], values: list[float]) -> str:
-    """Build a bar-chart URL for the 'พอร์ต' command (Stock USA vs Stock DR)."""
+    """Build a bar-chart URL for the 'พอร์ต' command (Stock USA vs Stock DR).
+
+    Values are THB-denominated. The single dataset carries an explicit label and
+    the legend is disabled, so QuickChart no longer renders an "undefined"
+    legend entry.
+    """
     config = {
         "type": "bar",
         "data": {
             "labels": labels,
-            "datasets": [{"data": values}],
+            "datasets": [{"label": "มูลค่า (บาท)", "data": values}],
+        },
+        "options": {
+            "plugins": {
+                "legend": {"display": False},
+            }
         },
     }
     return _build_chart_url(config)
