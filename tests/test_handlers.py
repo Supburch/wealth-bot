@@ -403,3 +403,57 @@ async def test_admin_handler_status():
         result = await AdminHandler("status").handle(ADMIN_USER)
     assert "ชีต" in result.text
     assert "ปกติ" in result.text
+
+
+# ── Asset breakdown (drill-down) ────────────────────────────────────────────────
+
+async def test_allocation_handler_attaches_quick_replies():
+    from handlers.allocation_handler import AllocationHandler
+    with patch("handlers.allocation_handler.get_user", AsyncMock(return_value=MOCK_USER)), \
+         patch("handlers.allocation_handler.get_asset_allocation", AsyncMock(return_value=MOCK_ALLOCATION)), \
+         patch("handlers.allocation_handler.get_cached_chart_url", AsyncMock(return_value=None)):
+        result = await AllocationHandler().handle(ALLOWED_USER)
+
+    assert result.quick_replies is not None
+    assert [q.label for q in result.quick_replies] == ["🔍 Retirement Savings"]
+    assert [q.text for q in result.quick_replies] == ["เจาะดู Retirement Savings"]
+
+
+async def test_asset_breakdown_handler_returns_formatted_text():
+    from handlers.asset_breakdown_handler import AssetBreakdownHandler
+    from models.portfolio import AssetBreakdown, AssetBreakdownItem
+    breakdown = AssetBreakdown(
+        category="Retirement Savings",
+        items=[
+            AssetBreakdownItem(name="MT Life", value=180000.0, percent=40.1),
+            AssetBreakdownItem(name="SSO", value=171000.0, percent=38.1),
+            AssetBreakdownItem(name="PVD", value=97627.0, percent=21.8),
+        ],
+    )
+    with patch("handlers.asset_breakdown_handler.get_user", AsyncMock(return_value=MOCK_USER)), \
+         patch("handlers.asset_breakdown_handler.get_asset_breakdown", AsyncMock(return_value=breakdown)):
+        result = await AssetBreakdownHandler("Retirement Savings").handle(ALLOWED_USER)
+
+    assert result.type == ResponseType.TEXT
+    assert "Retirement Savings" in result.text
+    assert "448,627" in result.text
+    assert "MT Life" in result.text
+    assert "180,000" in result.text
+    assert "40.1%" in result.text
+
+
+async def test_asset_breakdown_handler_empty_data():
+    from handlers.asset_breakdown_handler import AssetBreakdownHandler, NO_BREAKDOWN_DATA
+    from models.portfolio import AssetBreakdown
+    empty = AssetBreakdown(category="Retirement Savings", items=[])
+    with patch("handlers.asset_breakdown_handler.get_user", AsyncMock(return_value=MOCK_USER)), \
+         patch("handlers.asset_breakdown_handler.get_asset_breakdown", AsyncMock(return_value=empty)):
+        result = await AssetBreakdownHandler("Retirement Savings").handle(ALLOWED_USER)
+    assert result.text == NO_BREAKDOWN_DATA
+
+
+async def test_asset_breakdown_handler_unauthorized():
+    from handlers.asset_breakdown_handler import AssetBreakdownHandler
+    with patch("handlers.asset_breakdown_handler.get_user", AsyncMock(return_value=None)):
+        result = await AssetBreakdownHandler("Retirement Savings").handle(UNKNOWN_USER)
+    assert result.text == ACCESS_DENIED

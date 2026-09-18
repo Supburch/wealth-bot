@@ -22,9 +22,11 @@ class CommandRouter:
         self,
         routes: dict[str, CommandHandler],
         symbol_handler: Callable[[str, str], Awaitable[AppResponse]] | None = None,
+        prefix_routes: list[tuple[str, Callable[[str, str], Awaitable[AppResponse]]]] | None = None,
     ):
         self.routes = routes
         self.symbol_handler = symbol_handler
+        self.prefix_routes = prefix_routes or []
 
     def normalize_command(self, raw_command: str) -> str:
         command = raw_command.strip().lower()
@@ -41,6 +43,9 @@ class CommandRouter:
             handler = self.routes.get(command)
             if handler:
                 return await handler.handle(user_id)
+            for prefix, prefix_handler in self.prefix_routes:
+                if command.startswith(prefix):
+                    return await prefix_handler(user_id, command)
             if self.symbol_handler:
                 return await self.symbol_handler(user_id, command)
             return AppResponse(text=UNKNOWN_COMMAND)
@@ -63,6 +68,7 @@ def build_router(app_version: str = "1.0.0") -> "CommandRouter":
     from handlers.admin_handler import AdminHandler
     from handlers.utility_handler import PingHandler, VersionHandler, CashHandler
     from handlers.symbol_handler import handle_symbol_lookup
+    from handlers.asset_breakdown_handler import handle_asset_breakdown, BREAKDOWN_PREFIX
     from handlers.validate_handler import ValidateHandler
     from services.portfolio_service import PortfolioService
     from services.validation_service import ValidationService
@@ -122,4 +128,12 @@ def build_router(app_version: str = "1.0.0") -> "CommandRouter":
         "ตรวจสอบ": ValidateHandler(validation_svc, writeback_svc),
     }
 
-    return CommandRouter(routes=routes, symbol_handler=handle_symbol_lookup)
+    prefix_routes = [
+        (BREAKDOWN_PREFIX, handle_asset_breakdown),
+    ]
+
+    return CommandRouter(
+        routes=routes,
+        symbol_handler=handle_symbol_lookup,
+        prefix_routes=prefix_routes,
+    )

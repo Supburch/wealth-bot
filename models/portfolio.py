@@ -199,6 +199,29 @@ class AssetAllocation(BaseModel):
         return len(self.entries) == 0
 
 
+class AssetBreakdownItem(BaseModel):
+    """A single sub-item of an asset category with its weight in the category."""
+
+    name: str
+    value: float
+    percent: float
+
+
+class AssetBreakdown(BaseModel):
+    """Drill-down detail for one asset category (from a breakdown sheet)."""
+
+    category: str
+    items: list[AssetBreakdownItem]
+
+    @property
+    def total(self) -> float:
+        return sum(item.value for item in self.items)
+
+    @property
+    def is_empty(self) -> bool:
+        return len(self.items) == 0
+
+
 class WealthSummary(BaseModel):
     """
     Composite presentation DTO: portfolio summary + top holdings + allocation.

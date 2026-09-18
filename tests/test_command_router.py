@@ -48,3 +48,15 @@ async def test_route_command_symbol_exception_returns_unexpected_error():
     router = CommandRouter(routes={}, symbol_handler=_boom_symbol)
     result = await router.route_command("U1", "AAPL")
     assert result.text == UNEXPECTED_ERROR
+
+
+async def _capture_prefix(user_id: str, command: str) -> AppResponse:
+    return AppResponse(text=f"prefix:{command}")
+
+
+async def test_route_command_prefix_route_matches():
+    from services.command_router import CommandRouter
+    router = CommandRouter(routes={}, prefix_routes=[("เจาะดู ", _capture_prefix)])
+    result = await router.route_command("U1", "เจาะดู Retirement Savings")
+    # normalize_command lowercases before prefix matching.
+    assert result.text == "prefix:เจาะดู retirement savings"

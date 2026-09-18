@@ -1,9 +1,10 @@
 ﻿import logging
 
-from models.response import AppResponse
+from models.response import AppResponse, QuickReplyAction
 from core.enums import ResponseType
 from core.exceptions import SheetsReadError
 from core.messages import ACCESS_DENIED, DATA_UPDATING
+from core.sheet_config import ASSET_BREAKDOWN_RANGES
 from services.portfolio_service import allocation_balance_check, get_asset_allocation
 from services.user_mapping_service import get_user
 from services.chart_service import get_cached_chart_url
@@ -36,7 +37,16 @@ class AllocationHandler:
             text += f"\n⚠️ รวมสัดส่วนไม่ครบ 100% ({total:.1f}%)"
 
         image_url = await self._build_chart_url(allocation)
-        return AppResponse(type=ResponseType.TEXT, text=text, image_url=image_url)
+        quick_replies = [
+            QuickReplyAction(label=f"🔍 {category}", text=f"เจาะดู {category}")
+            for category in ASSET_BREAKDOWN_RANGES
+        ]
+        return AppResponse(
+            type=ResponseType.TEXT,
+            text=text,
+            image_url=image_url,
+            quick_replies=quick_replies,
+        )
 
     async def _build_chart_url(self, allocation) -> str | None:
         """Build the asset-allocation pie-chart URL, degrading gracefully.

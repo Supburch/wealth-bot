@@ -23,9 +23,12 @@ from pydantic import ValidationError
 from core.constants import TWOPLACES
 from core.exceptions import PortfolioParseError, PortfolioReadError, SheetsReadError
 from core.messages import DATA_UPDATING, PORTFOLIO_PARSE_ERROR, PORTFOLIO_READ_ERROR
+from core.sheet_config import ASSET_BREAKDOWN_RANGES, resolve_breakdown_category
 from models.portfolio import (
     AssetAllocation,
     AssetAllocationEntry,
+    AssetBreakdown,
+    AssetBreakdownItem,
     DrHolding,
     HoldingBreakdown,
     PortfolioHoldings,
@@ -388,6 +391,54 @@ async def get_asset_allocation(user_info: UserInfo) -> AssetAllocation:
         entries.append(AssetAllocationEntry(name=name, value=value, percent=percent))
 
     return AssetAllocation(entries=entries)
+
+
+@cached("asset_breakdown")
+async def get_asset_breakdown(user_info: UserInfo, category: str) -> AssetBreakdown:
+    """Drill-down detail for one asset category, with % of each sub-item.
+
+    Reads the configured breakdown range (B=name, C=value) and computes each
+    item's share of the category total, sorted by value descending. Parsing
+    stops at the first blank row, so the range can stay generous (e.g. A1:C50)
+    without tracking the exact row count. Unknown categories return an empty
+    breakdown instead of raising.
+    """
+    canonical = resolve_breakdown_category(category)
+    if canonical is None:
+        return AssetBreakdown(category=category, items=[])
+
+    config = ASSET_BREAKDOWN_RANGES[canonical]
+    try:
+        rows = await asyncio.to_thread(
+            get_raw_range, user_info.spreadsheet_id, config["range"]
+        )
+    except Exception as e:
+        raise SheetsReadError("Failed to read asset breakdown") from e
+
+    raw_items: list[tuple[str, float]] = []
+    for row in rows:
+        if not row or all(not str(cell).strip() for cell in row):
+            break  # dynamic range: stop at the first blank row
+        name = str(row[1]).strip() if len(row) > 1 else ""
+        if not name:
+            continue
+        raw_value = str(row[2]).strip() if len(row) > 2 else ""
+        value = _parse_float(raw_value)
+        if value <= 0:
+            continue
+        raw_items.append((name, value))
+
+    total = sum((value for _, value in raw_items), 0.0)
+    items = [
+        AssetBreakdownItem(
+            name=name,
+            value=value,
+            percent=0.0 if total == 0 else round((value / total) * 100, 1),
+        )
+        for name, value in raw_items
+    ]
+    items.sort(key=lambda item: item.value, reverse=True)
+    return AssetBreakdown(category=canonical, items=items)
 
 
 async def get_dr_pending_flags(user_info: UserInfo) -> int:

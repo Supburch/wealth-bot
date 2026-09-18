@@ -8,6 +8,7 @@ from linebot.v3.exceptions import InvalidSignatureError
 from linebot.v3.messaging import (
     Configuration, ApiClient, MessagingApi,
     ReplyMessageRequest, TextMessage, FlexMessage, FlexContainer, ImageMessage,
+    QuickReply, QuickReplyItem, MessageAction,
 )
 from linebot.v3.webhooks import MessageEvent, TextMessageContent
 
@@ -81,14 +82,26 @@ line_config = Configuration(access_token=settings.LINE_CHANNEL_ACCESS_TOKEN)
 parser = WebhookParser(settings.LINE_CHANNEL_SECRET)
 
 
-def _build_line_message(response: AppResponse):
+def _build_quick_reply(response: AppResponse):
+    """Build a LINE QuickReply from AppResponse.quick_replies, or None."""
+    if not response.quick_replies:
+        return None
+    items = [
+        QuickReplyItem(action=MessageAction(label=q.label, text=q.text))
+        for q in response.quick_replies
+    ]
+    return QuickReply(items=items)
+
+
+def _build_line_message(response: AppResponse, quick_reply=None):
     """Convert AppResponse to the appropriate LINE SDK message object."""
     if response.type == ResponseType.RICH and response.contents:
         return FlexMessage(
             alt_text=response.alt_text or "Portfolio",
             contents=FlexContainer.from_dict(response.contents),
+            quick_reply=quick_reply,
         )
-    return TextMessage(text=response.text or "")
+    return TextMessage(text=response.text or "", quick_reply=quick_reply)
 
 
 def _build_line_messages(response: AppResponse) -> list:
@@ -96,18 +109,22 @@ def _build_line_messages(response: AppResponse) -> list:
 
     The primary text/flex message always comes first; when ``image_url`` is
     present, a chart image (QuickChart URL) is appended as a second
-    ImageMessage. Chart delivery is best-effort — the text/flex message is
-    independent of it.
+    ImageMessage. LINE only honors quick replies on the *last* message of a
+    reply, so the quick reply is attached to whichever message lands last
+    (the image when present, otherwise the primary message).
     """
-    messages = [_build_line_message(response)]
+    quick_reply = _build_quick_reply(response)
     if response.image_url:
-        messages.append(
+        primary = _build_line_message(response)
+        return [
+            primary,
             ImageMessage(
                 original_content_url=response.image_url,
                 preview_image_url=response.image_url,
-            )
-        )
-    return messages
+                quick_reply=quick_reply,
+            ),
+        ]
+    return [_build_line_message(response, quick_reply)]
 
 
 @app.api_route("/health", methods=["GET", "HEAD"], response_model=HealthDto)

@@ -146,3 +146,61 @@ def test_callback_reply_message_failure_returns_200(client, caplog):
     assert resp.status_code == 200
     mock_api.reply_message.assert_called_once()
     assert "Failed to send LINE reply" in caplog.text
+
+
+def test_callback_quick_reply_on_last_message_without_image(client):
+    """Quick replies attach to the primary text message when no image follows."""
+    from linebot.v3.messaging import TextMessage, QuickReply
+    from models.response import QuickReplyAction
+
+    body = _message_body()
+    response = AppResponse(
+        text="ok",
+        quick_replies=[QuickReplyAction(label="🔍 X", text="เจาะดู X")],
+    )
+    with patch.object(main.router, "route_command", AsyncMock(return_value=response)), \
+         patch("main.ApiClient"), patch("main.MessagingApi") as mock_messaging_cls:
+        mock_api = mock_messaging_cls.return_value
+        resp = client.post(
+            "/callback",
+            content=body,
+            headers={"X-Line-Signature": _sign(body)},
+        )
+
+    assert resp.status_code == 200
+    messages = mock_api.reply_message.call_args.args[0].messages
+    assert len(messages) == 1
+    assert isinstance(messages[0], TextMessage)
+    assert isinstance(messages[0].quick_reply, QuickReply)
+    assert messages[0].quick_reply.items[0].action.label == "🔍 X"
+    assert messages[0].quick_reply.items[0].action.text == "เจาะดู X"
+
+
+def test_callback_quick_reply_on_image_when_image_present(client):
+    """Quick replies must be on the LAST message (the image), not the text."""
+    from linebot.v3.messaging import TextMessage, ImageMessage, QuickReply
+    from models.response import QuickReplyAction
+
+    body = _message_body()
+    response = AppResponse(
+        text="ok",
+        image_url="https://quickchart.io/chart?c=x",
+        quick_replies=[QuickReplyAction(label="🔍 X", text="เจาะดู X")],
+    )
+    with patch.object(main.router, "route_command", AsyncMock(return_value=response)), \
+         patch("main.ApiClient"), patch("main.MessagingApi") as mock_messaging_cls:
+        mock_api = mock_messaging_cls.return_value
+        resp = client.post(
+            "/callback",
+            content=body,
+            headers={"X-Line-Signature": _sign(body)},
+        )
+
+    assert resp.status_code == 200
+    messages = mock_api.reply_message.call_args.args[0].messages
+    assert len(messages) == 2
+    assert isinstance(messages[0], TextMessage)
+    assert messages[0].quick_reply is None
+    assert isinstance(messages[1], ImageMessage)
+    assert isinstance(messages[1].quick_reply, QuickReply)
+    assert messages[1].quick_reply.items[0].action.label == "🔍 X"

@@ -354,3 +354,50 @@ def test_get_portfolio_with_no_dr():
     assert result.data.total_value == Decimal("13176.00")
     assert result.data.total_positions == 1
 
+
+# ── Asset breakdown (drill-down) ────────────────────────────────────────────────
+
+async def test_get_asset_breakdown_computes_percent_and_sorts(mock_user):
+    from services.portfolio_service import get_asset_breakdown
+    with patch(
+        "services.portfolio_service.get_raw_range",
+        return_value=[
+            ["", "PVD", "97627"],
+            ["", "MT Life", "180,000"],
+            ["", "SSO", "171000"],
+        ],
+    ):
+        result = await get_asset_breakdown(mock_user, "Retirement Savings")
+
+    assert result.category == "Retirement Savings"
+    assert [i.name for i in result.items] == ["MT Life", "SSO", "PVD"]  # sorted desc
+    assert result.total == 448627.0
+    percents = {i.name: i.percent for i in result.items}
+    assert percents["MT Life"] == 40.1
+    assert percents["SSO"] == 38.1
+    assert percents["PVD"] == 21.8
+
+
+async def test_get_asset_breakdown_unknown_category_returns_empty(mock_user):
+    from services.portfolio_service import get_asset_breakdown
+    result = await get_asset_breakdown(mock_user, "Nonexistent")
+    assert result.is_empty
+    assert result.category == "Nonexistent"
+
+
+async def test_get_asset_breakdown_stops_at_blank_row(mock_user):
+    """Parsing stops at the first blank row (generous range like A1:C50)."""
+    from services.portfolio_service import get_asset_breakdown
+    with patch(
+        "services.portfolio_service.get_raw_range",
+        return_value=[
+            ["", "PVD", "97627"],
+            ["", "", ""],            # blank row → stop
+            ["", "SSO", "171000"],   # ignored (after blank)
+        ],
+    ):
+        result = await get_asset_breakdown(mock_user, "Retirement Savings")
+
+    assert [i.name for i in result.items] == ["PVD"]
+    assert result.total == 97627.0
+
