@@ -408,11 +408,22 @@ async def get_asset_breakdown(user_info: UserInfo, category: str) -> AssetBreakd
         return AssetBreakdown(category=category, items=[])
 
     config = ASSET_BREAKDOWN_RANGES[canonical]
+    # The sheet name must be part of the A1 range: get_raw_range treats a bare
+    # range like "A1:C50" as a worksheet *title*, not a cell range, and raises
+    # SheetNotFoundError. Combine sheet + range into e.g. "from Sum Wealth!A1:C50".
+    a1_range = f"{config['sheet']}!{config['range']}"
     try:
         rows = await asyncio.to_thread(
-            get_raw_range, user_info.spreadsheet_id, config["range"]
+            get_raw_range, user_info.spreadsheet_id, a1_range
         )
     except Exception as e:
+        # Log the real cause (type + message + traceback) before it is wrapped
+        # into a generic SheetsReadError and surfaced as the DATA_UPDATING fallback.
+        logger.exception(
+            "Failed to read asset breakdown (category=%r, range=%r)",
+            canonical,
+            a1_range,
+        )
         raise SheetsReadError("Failed to read asset breakdown") from e
 
     raw_items: list[tuple[str, float]] = []

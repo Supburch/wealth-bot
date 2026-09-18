@@ -378,6 +378,23 @@ async def test_get_asset_breakdown_computes_percent_and_sorts(mock_user):
     assert percents["PVD"] == 21.8
 
 
+async def test_get_asset_breakdown_passes_sheet_name_in_range(mock_user):
+    """Regression: the source sheet name must be prepended to the A1 range.
+
+    A bare range like 'A1:C50' is interpreted by get_raw_range as a worksheet
+    title (no '!'), which raises SheetNotFoundError and surfaces as the
+    DATA_UPDATING fallback. The correct call is 'from Sum Wealth!A1:C50'.
+    """
+    from services.portfolio_service import get_asset_breakdown
+    with patch(
+        "services.portfolio_service.get_raw_range",
+        return_value=[],
+    ) as mock_get:
+        await get_asset_breakdown(mock_user, "Retirement Savings")
+
+    mock_get.assert_called_once_with("test_sheet", "from Sum Wealth!A1:C50")
+
+
 async def test_get_asset_breakdown_unknown_category_returns_empty(mock_user):
     from services.portfolio_service import get_asset_breakdown
     result = await get_asset_breakdown(mock_user, "Nonexistent")
