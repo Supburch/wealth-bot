@@ -80,7 +80,7 @@ def test_build_portfolio_flex_shows_dr_warning():
     assert any("รอตรวจสอบ" in t for t in texts)
 
 
-def test_build_portfolio_flex_shows_us_profit_only():
+def test_build_portfolio_flex_shows_us_profit_row():
     item = PortfolioItem(
         symbol="AAPL",
         avg_cost=Decimal("100"),
@@ -111,6 +111,45 @@ def test_build_portfolio_flex_shows_us_profit_only():
     assert profit_value is not None
     assert "+฿500" in profit_value
     assert "+50.00%" in profit_value
+
+
+def test_build_portfolio_flex_shows_dr_profit_row():
+    item = PortfolioItem(
+        symbol="AAPL",
+        avg_cost=Decimal("100"),
+        shares=Decimal("10"),
+        current_price=Decimal("150"),
+    )
+    result = PortfolioResult(
+        us_holdings=PortfolioHoldings(items=[item]),
+        dr_value=Decimal("500"),
+        dr_cost=Decimal("400"),
+        dr_positions=1,
+        dr_skipped=0,
+    )
+    flex = build_portfolio_flex(result)
+
+    dr_label = None
+    dr_value_text = None
+    dr_color = None
+    for c in flex["body"]["contents"]:
+        if not (isinstance(c, dict) and c.get("type") == "box"):
+            continue
+        texts = [
+            t
+            for t in c.get("contents", [])
+            if isinstance(t, dict) and t.get("type") == "text"
+        ]
+        if texts and texts[0].get("text") == "กำไร/ขาดทุน (DR)":
+            dr_label = texts[0].get("text")
+            dr_value_text = texts[1].get("text")
+            dr_color = texts[1].get("color")
+            break
+
+    assert dr_label == "กำไร/ขาดทุน (DR)"
+    assert "+฿100" in dr_value_text
+    assert "+25.00%" in dr_value_text
+    assert dr_color == "#2ecc71"
 
 
 def test_build_today_flex():

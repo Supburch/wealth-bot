@@ -8,10 +8,10 @@ def build_portfolio_flex(
 ) -> dict:
     """Return raw Flex Message contents for the 'พอร์ต' command.
 
-    Shows Stock USA (with its profit/loss) and Stock DR as separate blocks plus
-    a combined total, and appends a warning when some DR rows are pending review
-    (skipped). The profit/loss line applies to the Stock USA block only — DR
-    positions carry no cost basis, so no combined profit is computed.
+    Shows Stock USA and Stock DR as separate blocks — each with its own
+    profit/loss (amount + % with color) — plus a combined total, and appends a
+    warning when some DR rows are pending review (skipped, i.e. have no cost
+    data in the DR cost table).
     """
 
     def row(label: str, value: str, color: str = "#555555", weight: str | None = None) -> dict:
@@ -39,6 +39,11 @@ def build_portfolio_flex(
     sign = "+" if us_profit >= 0 else ""
     profit_color = "#2ecc71" if us_profit >= 0 else "#e74c3c"
 
+    dr_profit = portfolio.dr_profit
+    dr_roi = portfolio.dr_roi_percent
+    dr_sign = "+" if dr_profit >= 0 else ""
+    dr_profit_color = "#2ecc71" if dr_profit >= 0 else "#e74c3c"
+
     contents: list[dict] = [
         {
             "type": "text",
@@ -51,6 +56,12 @@ def build_portfolio_flex(
         row("🇺🇸 Stock USA", f"฿{portfolio.us_value:,.0f}"),
         row("กำไร/ขาดทุน", f"{sign}฿{us_profit:,.0f} ({sign}{roi}%)", profit_color),
         row("🌏 Stock DR", f"฿{portfolio.dr_value:,.0f}"),
+    ]
+    if portfolio.dr_positions > 0:
+        contents.append(
+            row("กำไร/ขาดทุน (DR)", f"{dr_sign}฿{dr_profit:,.0f} ({dr_sign}{dr_roi}%)", dr_profit_color)
+        )
+    contents += [
         {"type": "separator"},
         row("💰 รวมทั้งหมด", f"฿{portfolio.total_value:,.0f}", color="#1a1a2e", weight="bold"),
         row("จำนวน", f"{portfolio.total_positions} หลักทรัพย์"),

@@ -25,15 +25,18 @@ class PortfolioRow(BaseModel):
     current_price: str
 
 
-class DrHolding(BaseModel):
-    """A DR (depositary receipt) position read from the 'from Streaming-DR' sheet.
+class DrCostRow(BaseModel):
+    """A DR cost-table row read from 'from Streaming-DR'!A201:G233 (section 1).
 
-    DR positions are THB-denominated and carry a pre-computed market value in
-    column M, so no FX conversion applies.
+    This section holds DR positions whose cost basis is complete and internally
+    consistent (avg cost × volume = total cost). Values are THB-denominated, so
+    no FX conversion applies.
     """
 
     symbol: str
-    value_thb: str
+    avg_cost: str
+    volume: str
+    current_price: str
 
 
 class PortfolioItem(BaseModel):
@@ -110,6 +113,7 @@ class PortfolioResult(BaseModel):
 
     us_holdings: PortfolioHoldings
     dr_value: Decimal = Decimal("0")
+    dr_cost: Decimal = Decimal("0")
     dr_positions: int = 0
     dr_skipped: int = 0
 
@@ -117,6 +121,18 @@ class PortfolioResult(BaseModel):
     def us_value(self) -> Decimal:
         """Total market value of USD holdings (already in THB)."""
         return self.us_holdings.total_market_value
+
+    @property
+    def dr_profit(self) -> Decimal:
+        """Total DR profit/loss in THB (market value minus cost basis)."""
+        return (self.dr_value - self.dr_cost).quantize(TWOPLACES)
+
+    @property
+    def dr_roi_percent(self) -> Decimal:
+        """DR return on investment (%), 0 when there is no cost basis."""
+        if self.dr_cost == 0:
+            return Decimal("0.00")
+        return ((self.dr_profit / self.dr_cost) * 100).quantize(TWOPLACES)
 
     @property
     def total_value(self) -> Decimal:

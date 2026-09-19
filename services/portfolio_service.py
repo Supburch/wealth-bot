@@ -29,7 +29,7 @@ from models.portfolio import (
     AssetAllocationEntry,
     AssetBreakdown,
     AssetBreakdownItem,
-    DrHolding,
+    DrCostRow,
     HoldingBreakdown,
     PortfolioHoldings,
     PortfolioItem,
@@ -106,31 +106,6 @@ def _is_error_value(value: object) -> bool:
     return s.startswith("#") or s == "N/A"
 
 
-def _sum_dr_holdings(holdings: list[DrHolding]) -> tuple[Decimal, int]:
-    """Sum DR market values (THB) and count valid DR positions.
-
-    DR values are already THB, so no FX conversion applies here. Blank,
-    non-numeric, and negative values are skipped with a warning.
-    """
-    total = Decimal("0")
-    count = 0
-    for holding in holdings:
-        raw = holding.value_thb.replace(",", "").replace("฿", "").replace("$", "").strip()
-        if not raw:
-            continue
-        try:
-            value = Decimal(raw)
-        except (InvalidOperation, ValueError):
-            logger.warning("Skipping DR holding with unreadable value %r", holding.symbol)
-            continue
-        if value < 0:
-            logger.warning("Skipping DR holding with negative value %r", holding.symbol)
-            continue
-        total += value
-        count += 1
-    return total.quantize(TWOPLACES), count
-
-
 # ── Class-based PortfolioService (domain) ─────────────────────────────────────
 
 class PortfolioService:
@@ -186,15 +161,42 @@ class PortfolioService:
 
             us_holdings = PortfolioHoldings(items=items)
 
-            dr_fetch = self.repository.fetch_dr_holdings(spreadsheet_id)
-            dr_value, dr_positions = _sum_dr_holdings(dr_fetch.holdings)
+            dr_symbols = self.repository.fetch_dr_holdings(spreadsheet_id)
+            dr_cost_rows = self.repository.fetch_dr_cost_rows(spreadsheet_id).rows
+            cost_by_symbol: dict[str, DrCostRow] = {
+                row.symbol.upper(): row for row in dr_cost_rows
+            }
+
+            dr_value = Decimal("0")
+            dr_cost = Decimal("0")
+            dr_positions = 0
+            dr_skipped = 0
+            for symbol in dr_symbols:
+                cost_row = cost_by_symbol.get(symbol.upper())
+                if cost_row is None:
+                    dr_skipped += 1
+                    continue
+                try:
+                    avg_cost = Decimal(cost_row.avg_cost.replace(",", ""))
+                    volume = Decimal(cost_row.volume.replace(",", ""))
+                    current_price = Decimal(cost_row.current_price.replace(",", ""))
+                except (InvalidOperation, ValueError):
+                    dr_skipped += 1
+                    continue
+                if volume <= 0 or current_price <= 0:
+                    dr_skipped += 1
+                    continue
+                dr_value += (current_price * volume).quantize(TWOPLACES)
+                dr_cost += (avg_cost * volume).quantize(TWOPLACES)
+                dr_positions += 1
 
             return ServiceResult(
                 data=PortfolioResult(
                     us_holdings=us_holdings,
-                    dr_value=dr_value,
+                    dr_value=dr_value.quantize(TWOPLACES),
+                    dr_cost=dr_cost.quantize(TWOPLACES),
                     dr_positions=dr_positions,
-                    dr_skipped=dr_fetch.skipped_count,
+                    dr_skipped=dr_skipped,
                 )
             )
 

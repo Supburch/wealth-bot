@@ -265,14 +265,15 @@ def test_get_portfolio_converts_usd_to_thb():
     """Class-based path converts unit prices to THB when fx_rate is provided."""
     from unittest.mock import MagicMock
     from models.portfolio import PortfolioRow
-    from repositories.portfolio_repository import DrFetchResult
+    from repositories.portfolio_repository import DrCostFetchResult
     from services.portfolio_service import PortfolioService
 
     fetch = MagicMock()
     fetch.rows = [PortfolioRow(symbol="MSFT", avg_cost="100", shares="2", current_price="200")]
     repo = MagicMock()
     repo.fetch_portfolio_rows.return_value = fetch
-    repo.fetch_dr_holdings.return_value = DrFetchResult(holdings=[], skipped_count=0)
+    repo.fetch_dr_holdings.return_value = []
+    repo.fetch_dr_cost_rows.return_value = DrCostFetchResult(rows=[])
 
     result = PortfolioService(repo).get_portfolio("sheet", fx_rate=Decimal("32.94"))
 
@@ -286,55 +287,75 @@ def test_get_portfolio_converts_usd_to_thb():
 
 # ── DR aggregation (US + DR combined) ──────────────────────────────────────────
 
-def _portfolio_repo(us_rows, dr_holdings, skipped_count=0):
+def _portfolio_repo(us_rows, dr_symbols=None, dr_cost_rows=None):
     from unittest.mock import MagicMock
-    from repositories.portfolio_repository import DrFetchResult
+    from repositories.portfolio_repository import DrCostFetchResult
 
     fetch = MagicMock()
     fetch.rows = us_rows
     repo = MagicMock()
     repo.fetch_portfolio_rows.return_value = fetch
-    repo.fetch_dr_holdings.return_value = DrFetchResult(
-        holdings=dr_holdings, skipped_count=skipped_count
-    )
+    repo.fetch_dr_holdings.return_value = dr_symbols or []
+    repo.fetch_dr_cost_rows.return_value = DrCostFetchResult(rows=dr_cost_rows or [])
     return repo
 
 
-def test_get_portfolio_includes_dr_value():
-    """DR rows without a flag are summed in THB and added to the combined total."""
-    from models.portfolio import DrHolding, PortfolioRow
+def test_get_portfolio_includes_dr_value_and_profit():
+    """A DR with a cost row contributes value and profit to the combined result."""
+    from models.portfolio import DrCostRow, PortfolioRow
     from services.portfolio_service import PortfolioService
 
     repo = _portfolio_repo(
         [PortfolioRow(symbol="MSFT", avg_cost="100", shares="2", current_price="200")],
-        [DrHolding(symbol="AAPL80", value_thb="฿5,000.00")],
+        dr_symbols=["AAPL80"],
+        dr_cost_rows=[DrCostRow(symbol="AAPL80", avg_cost="40", volume="100", current_price="50")],
     )
     result = PortfolioService(repo).get_portfolio("sheet", fx_rate=Decimal("32.94"))
 
     assert result.is_success
     assert result.data.us_value == Decimal("13176.00")
-    assert result.data.dr_value == Decimal("5000.00")
+    assert result.data.dr_value == Decimal("5000.00")   # 50 * 100
+    assert result.data.dr_cost == Decimal("4000.00")     # 40 * 100
+    assert result.data.dr_profit == Decimal("1000.00")
+    assert result.data.dr_roi_percent == Decimal("25.00")
     assert result.data.total_value == Decimal("18176.00")
     assert result.data.dr_skipped == 0
     assert result.data.total_positions == 2
 
 
-def test_get_portfolio_skips_flagged_dr():
-    """Flagged DR rows are excluded from totals and surfaced via dr_skipped."""
-    from models.portfolio import DrHolding, PortfolioRow
+def test_get_portfolio_skips_dr_without_cost_data():
+    """A DR with no matching cost row is excluded and surfaced via dr_skipped."""
+    from models.portfolio import PortfolioRow
     from services.portfolio_service import PortfolioService
 
     repo = _portfolio_repo(
         [PortfolioRow(symbol="MSFT", avg_cost="100", shares="2", current_price="200")],
-        [DrHolding(symbol="AAPL80", value_thb="5000")],
-        skipped_count=1,
+        dr_symbols=["AAPL80"],
+        dr_cost_rows=[],
     )
     result = PortfolioService(repo).get_portfolio("sheet", fx_rate=Decimal("32.94"))
 
     assert result.is_success
-    assert result.data.dr_value == Decimal("5000.00")
+    assert result.data.dr_value == Decimal("0")
+    assert result.data.dr_cost == Decimal("0")
     assert result.data.dr_skipped == 1
-    assert result.data.total_value == Decimal("18176.00")
+    assert result.data.total_value == Decimal("13176.00")
+    assert result.data.total_positions == 1
+
+
+def test_get_portfolio_dr_symbol_match_is_case_insensitive():
+    from models.portfolio import DrCostRow, PortfolioRow
+    from services.portfolio_service import PortfolioService
+
+    repo = _portfolio_repo(
+        [PortfolioRow(symbol="MSFT", avg_cost="100", shares="2", current_price="200")],
+        dr_symbols=["aapl80"],
+        dr_cost_rows=[DrCostRow(symbol="AAPL80", avg_cost="40", volume="100", current_price="50")],
+    )
+    result = PortfolioService(repo).get_portfolio("sheet", fx_rate=Decimal("32.94"))
+
+    assert result.data.dr_skipped == 0
+    assert result.data.dr_value == Decimal("5000.00")
 
 
 def test_get_portfolio_with_no_dr():
@@ -344,12 +365,12 @@ def test_get_portfolio_with_no_dr():
 
     repo = _portfolio_repo(
         [PortfolioRow(symbol="MSFT", avg_cost="100", shares="2", current_price="200")],
-        [],
     )
     result = PortfolioService(repo).get_portfolio("sheet", fx_rate=Decimal("32.94"))
 
     assert result.is_success
     assert result.data.dr_value == Decimal("0")
+    assert result.data.dr_cost == Decimal("0")
     assert result.data.dr_skipped == 0
     assert result.data.total_value == Decimal("13176.00")
     assert result.data.total_positions == 1
