@@ -39,6 +39,21 @@ class DrCostRow(BaseModel):
     current_price: str
 
 
+class DrSection2Row(BaseModel):
+    """A raw row from the DR '1 Year DCA' cost table (section 2).
+
+    Unlike section 1 (avg_cost × volume = total cost), this section stores the
+    total cost basis directly as ``size`` (THB) alongside a current and average
+    price, with no explicit volume column. The service derives the implied
+    volume (size / avg_price) so both sections merge through one code path.
+    """
+
+    symbol: str
+    size: str
+    avg_price: str
+    current_price: str
+
+
 class PortfolioItem(BaseModel):
     """Parsed position with computed financial properties."""
     symbol: str

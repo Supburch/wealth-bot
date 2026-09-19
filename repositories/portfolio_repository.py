@@ -4,7 +4,7 @@ from typing import Protocol, List
 from core.sheet_config import AppConfig
 from core.exceptions import PortfolioReadError, SheetNotFoundError
 from core.redaction import mask_id
-from models.portfolio import DrCostRow, PortfolioRow
+from models.portfolio import DrCostRow, DrSection2Row, PortfolioRow
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +51,17 @@ def _is_positive_number(value: str) -> bool:
         return False
 
 
+def _clean_number(value: str) -> str:
+    """Strip currency/formatting characters so a cell parses as a plain decimal."""
+    return (
+        value.replace(",", "")
+        .replace("฿", "")
+        .replace("$", "")
+        .replace("%", "")
+        .strip()
+    )
+
+
 def _is_error_cell(value: str) -> bool:
     """True when ``value`` is a spreadsheet error placeholder (#N/A, #DIV/0!)."""
     s = value.strip().upper()
@@ -63,6 +74,13 @@ _DR_COST_VOLUME_COL = 1   # B — volume (shares)
 _DR_COST_PCT_COL = 3      # D — % P/L (error rows are filtered out)
 _DR_COST_SYMBOL_COL = 4   # E — symbol
 _DR_COST_PRICE_COL = 5    # F — current price per share
+
+# Column indices (0-based) for the DR cost table section 2 (range A241:M249).
+_DR2_SIZE_COL = 2        # C — total cost basis (THB)
+_DR2_SYMBOL_COL = 4      # E — symbol
+_DR2_PRICE_COL = 6       # G — current price per share
+_DR2_AVG_COL = 7         # H — average cost per share
+_DR2_PCT_COL = 12        # M — % P/L (error rows filtered out)
 
 
 @dataclass
@@ -210,3 +228,58 @@ class PortfolioRepository:
                 current_price=current_price,
             ))
         return DrCostFetchResult(rows=rows)
+
+    def fetch_dr_cost_rows_section2(self, spreadsheet_id: str) -> List[DrSection2Row]:
+        """Read the DR cost table (section 2, '1 Year DCA') and return valid rows.
+
+        Section 2 stores the total cost basis directly (``size``) instead of an
+        explicit volume, so a row is valid when it has a non-empty symbol and
+        positive size, average price and current price. Rows whose % P/L cell is
+        a spreadsheet error placeholder are skipped.
+        """
+        try:
+            raw_data = self.sheets_gateway.get_sheet_records(
+                spreadsheet_id, self.config.dr_cost_range_2
+            )
+        except SheetNotFoundError:
+            logger.info(
+                "DR cost table section 2 missing; no section-2 cost basis available",
+                extra={"spreadsheet_id": mask_id(spreadsheet_id)},
+            )
+            return []
+        except Exception as e:
+            logger.error(
+                "Failed to fetch DR cost rows (section 2): %s",
+                type(e).__name__,
+                extra={"spreadsheet_id": mask_id(spreadsheet_id)},
+                exc_info=True,
+            )
+            raise PortfolioReadError("Error reading DR cost table section 2") from e
+
+        rows: List[DrSection2Row] = []
+        for row in raw_data:
+            if not row or _is_blank_row(row):
+                continue
+            symbol = str(row[_DR2_SYMBOL_COL]).strip() if len(row) > _DR2_SYMBOL_COL else ""
+            symbol = _normalize_dr_symbol(symbol)
+            if not symbol:
+                continue
+            size = _clean_number(str(row[_DR2_SIZE_COL])) if len(row) > _DR2_SIZE_COL else ""
+            avg_price = _clean_number(str(row[_DR2_AVG_COL])) if len(row) > _DR2_AVG_COL else ""
+            current_price = _clean_number(str(row[_DR2_PRICE_COL])) if len(row) > _DR2_PRICE_COL else ""
+            pct_pl = str(row[_DR2_PCT_COL]).strip() if len(row) > _DR2_PCT_COL else ""
+            if (
+                not _is_positive_number(size)
+                or not _is_positive_number(avg_price)
+                or not _is_positive_number(current_price)
+            ):
+                continue
+            if _is_error_cell(pct_pl):
+                continue
+            rows.append(DrSection2Row(
+                symbol=symbol,
+                size=size,
+                avg_price=avg_price,
+                current_price=current_price,
+            ))
+        return rows

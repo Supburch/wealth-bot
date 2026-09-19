@@ -134,3 +134,44 @@ def test_fetch_dr_cost_rows_raises_on_other_read_errors():
     repo = PortfolioRepository(BrokenGateway(), AppConfig())
     with pytest.raises(PortfolioReadError):
         repo.fetch_dr_cost_rows("sheet")
+
+
+def test_fetch_dr_cost_rows_section2_returns_valid_rows():
+    gateway = FakeGateway([
+        # C=size(2) E=symbol(4) G=price(6) H=avg(7) M=pct(12)
+        ["", "", "฿6,054", "", "ASML01", "", "45.75", "19.43", "", "", "", "", "135.46%"],
+        ["", "", "0", "", "ZERO", "", "10", "5", "", "", "", "", "5%"],       # non-positive size -> skipped
+        ["", "", "100", "", "ERR", "", "10", "5", "", "", "", "", "#N/A"],    # error % -> skipped
+        ["", "", "฿4,060", "", "LOREAL80.BK", "", "1.46", "1.45", "", "", "", "", "0.69%"],
+    ])
+    repo = PortfolioRepository(gateway, AppConfig())
+    result = repo.fetch_dr_cost_rows_section2("sheet")
+
+    assert len(result) == 2
+    assert result[0].symbol == "ASML01"
+    assert result[0].size == "6054"
+    assert result[0].avg_price == "19.43"
+    assert result[0].current_price == "45.75"
+    assert result[1].symbol == "LOREAL80"
+    assert result[1].size == "4060"
+
+
+def test_fetch_dr_cost_rows_section2_degrades_when_sheet_not_found():
+    class MissingSheetGateway:
+        def get_sheet_records(self, spreadsheet_id, range_name):
+            raise SheetNotFoundError("from Streaming-DR")
+
+    repo = PortfolioRepository(MissingSheetGateway(), AppConfig())
+    result = repo.fetch_dr_cost_rows_section2("sheet")
+
+    assert result == []
+
+
+def test_fetch_dr_cost_rows_section2_raises_on_other_read_errors():
+    class BrokenGateway:
+        def get_sheet_records(self, spreadsheet_id, range_name):
+            raise RuntimeError("boom")
+
+    repo = PortfolioRepository(BrokenGateway(), AppConfig())
+    with pytest.raises(PortfolioReadError):
+        repo.fetch_dr_cost_rows_section2("sheet")

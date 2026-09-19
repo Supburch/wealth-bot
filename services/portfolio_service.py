@@ -167,6 +167,25 @@ class PortfolioService:
                 row.symbol.upper(): row for row in dr_cost_rows
             }
 
+            # Section 2 ('1 Year DCA') stores total cost basis directly; derive
+            # the implied volume so it flows through the same merge as section 1.
+            for row in self.repository.fetch_dr_cost_rows_section2(spreadsheet_id):
+                try:
+                    size = Decimal(row.size)
+                    avg_price = Decimal(row.avg_price)
+                    current_price = Decimal(row.current_price)
+                    if avg_price <= 0:
+                        continue
+                    volume = size / avg_price
+                except (InvalidOperation, ValueError, ZeroDivisionError):
+                    continue
+                cost_by_symbol[row.symbol.upper()] = DrCostRow(
+                    symbol=row.symbol,
+                    avg_cost=row.avg_price,
+                    volume=str(volume),
+                    current_price=row.current_price,
+                )
+
             dr_value = Decimal("0")
             dr_cost = Decimal("0")
             dr_positions = 0

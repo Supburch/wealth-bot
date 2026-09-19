@@ -274,6 +274,7 @@ def test_get_portfolio_converts_usd_to_thb():
     repo.fetch_portfolio_rows.return_value = fetch
     repo.fetch_dr_holdings.return_value = []
     repo.fetch_dr_cost_rows.return_value = DrCostFetchResult(rows=[])
+    repo.fetch_dr_cost_rows_section2.return_value = []
 
     result = PortfolioService(repo).get_portfolio("sheet", fx_rate=Decimal("32.94"))
 
@@ -287,7 +288,7 @@ def test_get_portfolio_converts_usd_to_thb():
 
 # ── DR aggregation (US + DR combined) ──────────────────────────────────────────
 
-def _portfolio_repo(us_rows, dr_symbols=None, dr_cost_rows=None):
+def _portfolio_repo(us_rows, dr_symbols=None, dr_cost_rows=None, dr_section2_rows=None):
     from unittest.mock import MagicMock
     from repositories.portfolio_repository import DrCostFetchResult
 
@@ -297,6 +298,7 @@ def _portfolio_repo(us_rows, dr_symbols=None, dr_cost_rows=None):
     repo.fetch_portfolio_rows.return_value = fetch
     repo.fetch_dr_holdings.return_value = dr_symbols or []
     repo.fetch_dr_cost_rows.return_value = DrCostFetchResult(rows=dr_cost_rows or [])
+    repo.fetch_dr_cost_rows_section2.return_value = dr_section2_rows or []
     return repo
 
 
@@ -356,6 +358,27 @@ def test_get_portfolio_dr_symbol_match_is_case_insensitive():
 
     assert result.data.dr_skipped == 0
     assert result.data.dr_value == Decimal("5000.00")
+
+
+def test_get_portfolio_includes_dr_section2_value_and_profit():
+    """Section-2 DR rows (size + avg/current price) contribute via implied volume."""
+    from models.portfolio import DrSection2Row, PortfolioRow
+    from services.portfolio_service import PortfolioService
+
+    repo = _portfolio_repo(
+        [PortfolioRow(symbol="MSFT", avg_cost="100", shares="2", current_price="200")],
+        dr_symbols=["ASML01"],
+        dr_section2_rows=[
+            DrSection2Row(symbol="ASML01", size="6054", avg_price="19.43", current_price="45.75"),
+        ],
+    )
+    result = PortfolioService(repo).get_portfolio("sheet", fx_rate=Decimal("32.94"))
+
+    assert result.is_success
+    assert result.data.dr_cost == Decimal("6054.00")     # implied volume × avg = size
+    assert result.data.dr_value == Decimal("14254.79")   # 6054 × (45.75 / 19.43)
+    assert result.data.dr_skipped == 0
+    assert result.data.total_positions == 2
 
 
 def test_get_portfolio_with_no_dr():
