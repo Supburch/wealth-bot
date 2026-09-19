@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     APP_VERSION: str = "1.0.0"
     LOG_LEVEL: str = "INFO"
 
+    # LINE message-quota low-warning: warn when remaining messages drop below
+    # this absolute count, and check at most this often.
+    QUOTA_LOW_THRESHOLD: int = 100
+    QUOTA_CHECK_INTERVAL_SECONDS: float = 60.0
+
     @field_validator("GOOGLE_CREDENTIALS_JSON")
     @classmethod
     def validate_google_credentials(cls, value: str) -> str:

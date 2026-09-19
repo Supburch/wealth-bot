@@ -15,12 +15,15 @@ from linebot.v3.webhooks import MessageEvent, TextMessageContent
 from config import settings
 from core.enums import ResponseType
 from core.correlation import RequestIdFilter, request_id_var
+from core.messages import QUOTA_LOW_WARNING
 from core.redaction import mask_id, redact_text
 from models.health import HealthDto
+from models.quota import QuotaStatus
 from models.response import AppResponse
 from services.command_router import build_router
 from services.sheets_service import check_sheets_health
 from services.cache import get_cache_entries_count
+from services.quota_service import QuotaService
 
 class ExtraFieldFormatter(logging.Formatter):
     """Render ``extra={...}`` keys as key=value pairs on the log line.
@@ -66,6 +69,35 @@ logger = logging.getLogger(__name__)
 
 START_TIME = time.time()
 
+# ── Quota low-warning state ────────────────────────────────────────────────────
+_last_quota_check = 0.0
+_quota_status_cache: QuotaStatus | None = None
+
+
+async def get_quota_status(line_bot_api) -> QuotaStatus | None:
+    """Return the current LINE message-quota status, throttled to one API call
+    per ``settings.QUOTA_CHECK_INTERVAL_SECONDS``.
+
+    The result is cached between checks so the webhook can append a low-quota
+    warning to outgoing replies without re-polling the API on every message.
+    Never raises: a quota read failure must not affect the webhook reply.
+    """
+    global _last_quota_check, _quota_status_cache
+    now = time.time()
+    if now - _last_quota_check < settings.QUOTA_CHECK_INTERVAL_SECONDS:
+        return _quota_status_cache
+    _last_quota_check = now
+
+    try:
+        _quota_status_cache = await QuotaService(
+            line_bot_api, low_threshold=settings.QUOTA_LOW_THRESHOLD
+        ).get_status()
+    except Exception:
+        logger.debug("Quota check failed", exc_info=True)
+        _quota_status_cache = None
+    return _quota_status_cache
+
+
 # ── Router (initialized at startup) ───────────────────────────────────────────
 router = build_router(settings.APP_VERSION)
 
@@ -102,6 +134,36 @@ def _build_line_message(response: AppResponse, quick_reply=None):
             quick_reply=quick_reply,
         )
     return TextMessage(text=response.text or "", quick_reply=quick_reply)
+
+
+def _append_quota_warning(response: AppResponse, status: QuotaStatus) -> AppResponse:
+    """Append a low-quota warning to the reply (text tail or Flex bubble tail).
+
+    The warning is folded into the existing message — not sent as a separate
+    message — so it never conflicts with quick replies (which LINE only honors
+    on the *last* message of a reply).
+    """
+    warning = QUOTA_LOW_WARNING.format(remaining=status.remaining, limit=status.quota_limit)
+    if response.type == ResponseType.RICH and response.contents:
+        contents = dict(response.contents)
+        body = dict(contents.get("body", {}))
+        items = list(body.get("contents", []))
+        items.extend(
+            [
+                {"type": "separator"},
+                {
+                    "type": "text",
+                    "text": warning,
+                    "color": "#e67e22",
+                    "size": "sm",
+                    "wrap": True,
+                },
+            ]
+        )
+        body["contents"] = items
+        contents["body"] = body
+        return response.model_copy(update={"contents": contents})
+    return response.model_copy(update={"text": f"{response.text or ''}\n\n{warning}"})
 
 
 def _build_line_messages(response: AppResponse) -> list:
@@ -174,6 +236,14 @@ async def line_webhook(request: Request, x_line_signature: str = Header(None)):
                 logger.debug("Message text: %s", redact_text(text))
 
                 response = await router.route_command(user_id, text)
+                quota_status = await get_quota_status(line_bot_api)
+                if quota_status and quota_status.is_low:
+                    logger.warning(
+                        "LINE message quota low: %s/%s messages remaining",
+                        quota_status.remaining,
+                        quota_status.quota_limit,
+                    )
+                    response = _append_quota_warning(response, quota_status)
                 try:
                     line_bot_api.reply_message(
                         ReplyMessageRequest(

@@ -6,6 +6,7 @@ PORTFOLIO_READ_ERROR = "⚠️ ไม่สามารถดึงข้อม�
 PORTFOLIO_PARSE_ERROR = "⚠️ ข้อมูลในพอร์ตไม่ถูกต้อง กรุณาตรวจสอบ Google Sheets"
 UNEXPECTED_ERROR = "⚠️ ไม่สามารถดึงข้อมูลได้ชั่วคราว\nกรุณาลองใหม่อีกครั้ง"
 UNKNOWN_COMMAND = "คำสั่งไม่ถูกต้อง พิมพ์ 'help' เพื่อดูคำสั่งทั้งหมด"
+QUOTA_LOW_WARNING = "⚠️ LINE โควตาข้อความใกล้เต็ม เหลือ {remaining}/{limit} ข้อความ"
 FX_RATE_ERROR = "⚠️ อัตราแลกเปลี่ยน (THB/USD) ในชีตไม่ถูกต้องหรือไม่สามารถดึงได้"
 DATA_UPDATING = "⏳ ข้อมูลกำลังอัปเดต ลองใหม่อีกครั้งครับ"
 

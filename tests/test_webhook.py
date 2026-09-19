@@ -99,6 +99,51 @@ def test_callback_valid_signature_processes(client):
     mock_api.reply_message.assert_called_once()
 
 
+def test_callback_checks_quota_status(client):
+    """The webhook fetches the (throttled) quota status before replying."""
+    body = _message_body()
+    with patch.object(
+        main.router, "route_command", AsyncMock(return_value=AppResponse(text="ok"))
+    ), patch("main.ApiClient"), patch("main.MessagingApi"), \
+         patch.object(main, "get_quota_status", AsyncMock(return_value=None)) as quota_mock:
+        resp = client.post(
+            "/callback",
+            content=body,
+            headers={"X-Line-Signature": _sign(body)},
+        )
+
+    assert resp.status_code == 200
+    quota_mock.assert_awaited_once()
+
+
+def test_callback_appends_quota_warning_when_low(client):
+    """A low-quota status appends a warning to the reply text."""
+    from linebot.v3.messaging import TextMessage
+    from models.quota import QuotaStatus
+
+    body = _message_body()
+    status = QuotaStatus(
+        total_usage=950, quota_limit=1000, remaining=50, usage_percent=95.0, is_low=True
+    )
+    with patch.object(
+        main.router, "route_command", AsyncMock(return_value=AppResponse(text="ok"))
+    ), patch("main.ApiClient"), patch("main.MessagingApi") as mock_messaging_cls, \
+         patch.object(main, "get_quota_status", AsyncMock(return_value=status)):
+        mock_api = mock_messaging_cls.return_value
+        resp = client.post(
+            "/callback",
+            content=body,
+            headers={"X-Line-Signature": _sign(body)},
+        )
+
+    assert resp.status_code == 200
+    request = mock_api.reply_message.call_args.args[0]
+    messages = request.messages
+    assert len(messages) == 1
+    assert isinstance(messages[0], TextMessage)
+    assert "โควตาข้อความใกล้เต็ม" in messages[0].text
+
+
 def test_callback_appends_chart_image_message(client):
     """An AppResponse with image_url sends the text/flex message then an image."""
     from linebot.v3.messaging import ImageMessage
