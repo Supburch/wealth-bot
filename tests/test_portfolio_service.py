@@ -11,9 +11,15 @@ Tests:
 """
 import pytest
 from decimal import Decimal
-from unittest.mock import patch
+from unittest.mock import patch, AsyncMock
 from services import cache as cache_module
 from models.user import UserInfo
+
+
+def _zero_dr_totals():
+    """A DrTotals with all zeros for tests that don't care about DR."""
+    from services.portfolio_service import DrTotals
+    return DrTotals(Decimal("0"), Decimal("0"), 0, 0)
 
 
 MOCK_ALLOCATION_DICT = {
@@ -48,7 +54,8 @@ def _default_fx_rate():
 
 
 async def test_get_cash_balance(mock_user):
-    with patch("services.portfolio_service.get_sheet_as_dict", return_value=MOCK_ALLOCATION_DICT):
+    with patch("services.portfolio_service.get_sheet_as_dict", return_value=MOCK_ALLOCATION_DICT), \
+         patch("services.portfolio_service.get_dr_totals", AsyncMock(return_value=_zero_dr_totals())):
         from services.portfolio_service import get_cash_balance
         result = await get_cash_balance(mock_user)
 
@@ -56,7 +63,8 @@ async def test_get_cash_balance(mock_user):
 
 
 async def test_get_cash_balance_zero_when_absent(mock_user):
-    with patch("services.portfolio_service.get_sheet_as_dict", return_value={"Stock USA": "฿100"}):
+    with patch("services.portfolio_service.get_sheet_as_dict", return_value={"Stock USA": "฿100"}), \
+         patch("services.portfolio_service.get_dr_totals", AsyncMock(return_value=_zero_dr_totals())):
         from services.portfolio_service import get_cash_balance
         result = await get_cash_balance(mock_user)
 
@@ -461,4 +469,126 @@ async def test_get_asset_breakdown_stops_at_blank_row(mock_user):
 
     assert [i.name for i in result.items] == ["PVD"]
     assert result.total == 97627.0
+
+
+# ── DR totals (shared helper) ───────────────────────────────────────────────────
+
+def test_compute_dr_totals_merges_sections():
+    """The extracted helper merges section-1 and section-2 cost rows."""
+    from models.portfolio import DrCostRow, DrSection2Row
+    from services.portfolio_service import compute_dr_totals
+
+    totals = compute_dr_totals(
+        dr_symbols=["AAPL80", "ASML01", "ORPHAN80"],
+        dr_cost_rows=[
+            DrCostRow(symbol="AAPL80", avg_cost="40", volume="100", current_price="50"),
+        ],
+        dr_section2_rows=[
+            DrSection2Row(symbol="ASML01", size="6054", avg_price="19.43", current_price="45.75"),
+        ],
+    )
+
+    assert totals.dr_value == Decimal("19254.79")   # 5000.00 + 14254.79
+    assert totals.dr_cost == Decimal("10054.00")     # 4000.00 + 6054.00
+    assert totals.dr_positions == 2
+    assert totals.dr_skipped == 1                    # ORPHAN80 has no cost row
+
+
+def test_replace_dr_value_replaces_only():
+    """_replace_dr_value swaps the DR entry value without adding a duplicate."""
+    from services.portfolio_service import _replace_dr_value
+
+    values = [
+        ("Cash", Decimal("100")),
+        ("Stock World (DR)", Decimal("0")),
+        ("Stock USA", Decimal("50")),
+    ]
+    out = _replace_dr_value(values, Decimal("37"))
+
+    assert out == [
+        ("Cash", Decimal("100")),
+        ("Stock World (DR)", Decimal("37")),
+        ("Stock USA", Decimal("50")),
+    ]
+
+
+async def test_get_asset_allocation_replaces_stale_dr_value(mock_user):
+    """The 'Stock World (DR)' entry value is replaced with the live DR value."""
+    from services.portfolio_service import DrTotals, get_asset_allocation
+
+    alloc = {
+        "Cash": "฿95,000",
+        "Stock World (DR)": "0.00",
+        "Stock USA": "฿87,850",
+    }
+    dr_totals = DrTotals(
+        dr_value=Decimal("37891.00"),
+        dr_cost=Decimal("22220.00"),
+        dr_positions=7,
+        dr_skipped=8,
+    )
+    with patch("services.portfolio_service.get_sheet_as_dict", return_value=alloc), \
+         patch("services.portfolio_service.get_dr_totals", AsyncMock(return_value=dr_totals)):
+        result = await get_asset_allocation(mock_user)
+
+    by_name = {e.name: e for e in result.entries}
+    assert set(by_name) == {"Cash", "Stock World (DR)", "Stock USA"}
+    assert by_name["Stock World (DR)"].value == Decimal("37891.00")
+    assert result.total == Decimal("220741.00")
+
+
+async def test_get_asset_allocation_does_not_add_missing_dr_entry(mock_user):
+    """When the sheet has no DR row, the live DR value is not appended."""
+    from services.portfolio_service import DrTotals, get_asset_allocation
+
+    alloc = {"Cash": "฿95,000", "Stock USA": "฿87,850"}
+    dr_totals = DrTotals(
+        dr_value=Decimal("37891.00"),
+        dr_cost=Decimal("22220.00"),
+        dr_positions=7,
+        dr_skipped=8,
+    )
+    with patch("services.portfolio_service.get_sheet_as_dict", return_value=alloc), \
+         patch("services.portfolio_service.get_dr_totals", AsyncMock(return_value=dr_totals)):
+        result = await get_asset_allocation(mock_user)
+
+    assert [e.name for e in result.entries] == ["Cash", "Stock USA"]
+
+
+async def test_get_dr_totals_computes_live_skipped(mock_user):
+    """get_dr_totals reports the live skipped count, not the stale O1 counter."""
+    from unittest.mock import MagicMock
+    from models.portfolio import DrCostRow
+    from repositories.portfolio_repository import DrCostFetchResult
+    from services.portfolio_service import get_dr_totals
+
+    repo = MagicMock()
+    repo.fetch_dr_holdings.return_value = ["AAPL80", "ORPHAN80"]
+    repo.fetch_dr_cost_rows.return_value = DrCostFetchResult(
+        rows=[DrCostRow(symbol="AAPL80", avg_cost="40", volume="100", current_price="50")]
+    )
+    repo.fetch_dr_cost_rows_section2.return_value = []
+
+    with patch("services.portfolio_service._dr_repository", return_value=repo):
+        totals = await get_dr_totals(mock_user)
+
+    assert totals.dr_skipped == 1
+    assert totals.dr_value == Decimal("5000.00")
+
+
+async def test_get_dr_totals_degrades_on_read_error(mock_user):
+    """A DR read error degrades to zero totals instead of breaking the reply."""
+    from unittest.mock import MagicMock
+    from core.exceptions import PortfolioReadError
+    from services.portfolio_service import get_dr_totals
+
+    repo = MagicMock()
+    repo.fetch_dr_holdings.side_effect = PortfolioReadError("boom")
+
+    with patch("services.portfolio_service._dr_repository", return_value=repo):
+        totals = await get_dr_totals(mock_user)
+
+    assert totals.dr_value == Decimal("0")
+    assert totals.dr_cost == Decimal("0")
+    assert totals.dr_skipped == 0
 

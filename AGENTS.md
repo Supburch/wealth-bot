@@ -330,3 +330,12 @@ Local webhook: expose via ngrok → point LINE Developers Console to `/callback`
 - Dropped the now-unused `import logging` / `logger` declarations and `UNEXPECTED_ERROR` imports (kept `UNEXPECTED_ERROR` in `admin_handler`, which still uses it for the unknown-command fallback).
 - Updated 2 tests to assert bubbles-up instead of `UNEXPECTED_ERROR`: `test_validation.py::test_validate_handler_writeback_failure_bubbles_up` and `test_user_mapping_service.py::test_handler_bubbles_up_on_fetch_failure`.
 - Tests: **144 passed, 2 skipped** (full suite).
+
+### 2026-09-22 — P2.5: fix `สรุป`/`สัดส่วน` missing DR value & wrong pending count
+
+- Extracted the DR merge math out of `PortfolioService.get_portfolio` into a shared pure helper `compute_dr_totals()` returning a `DrTotals` dataclass (`dr_value`/`dr_cost`/`dr_positions`/`dr_skipped`); `get_portfolio` now delegates to it (no behavior change).
+- Added module-level `@cached("dr_totals") async get_dr_totals()` that reads DR through `PortfolioRepository` (via a `get_raw_range` gateway adapter) and degrades to zero totals on `PortfolioReadError`, so `สรุป`/`สัดส่วน` stay responsive when the DR sheet is missing.
+- `get_asset_allocation()` now replaces the stale `Stock World (DR)` cell with the live-computed DR value (replacement only — never adds a duplicate row), keeping `สัดส่วน`/`สรุป` consistent with `พอร์ต`.
+- `WealthSummaryHandler` now reports the live `dr_skipped` (8) instead of the stale `'from Streaming-DR'!O1` counter (15, read via the removed `get_dr_pending_flags`).
+- Added tests for `compute_dr_totals`, DR value replacement, no-duplicate behavior, live `dr_skipped`, and read-error degradation.
+- Tests: **250 passed, 2 skipped** (full suite).

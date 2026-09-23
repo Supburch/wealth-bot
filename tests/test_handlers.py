@@ -172,9 +172,11 @@ async def test_portfolio_handler_chart_failure_still_returns_rich():
 
 async def test_wealth_summary_handler_returns_text():
     from handlers.wealth_summary_handler import WealthSummaryHandler
+    from services.portfolio_service import DrTotals
     with patch("handlers.wealth_summary_handler.get_user", AsyncMock(return_value=MOCK_USER)), \
          patch("handlers.wealth_summary_handler.get_asset_allocation", AsyncMock(return_value=MOCK_ALLOCATION)), \
-         patch("handlers.wealth_summary_handler.get_dr_pending_flags", AsyncMock(return_value=0)):
+         patch("handlers.wealth_summary_handler.get_dr_totals",
+               AsyncMock(return_value=DrTotals(Decimal("0"), Decimal("0"), 0, 0))):
         result = await WealthSummaryHandler().handle(ALLOWED_USER)
     assert result.type == ResponseType.TEXT
     assert "สรุปพอร์ต" in result.text
@@ -185,9 +187,11 @@ async def test_wealth_summary_handler_returns_text():
 
 async def test_wealth_summary_handler_appends_pending_warning():
     from handlers.wealth_summary_handler import WealthSummaryHandler
+    from services.portfolio_service import DrTotals
     with patch("handlers.wealth_summary_handler.get_user", AsyncMock(return_value=MOCK_USER)), \
          patch("handlers.wealth_summary_handler.get_asset_allocation", AsyncMock(return_value=MOCK_ALLOCATION)), \
-         patch("handlers.wealth_summary_handler.get_dr_pending_flags", AsyncMock(return_value=2)):
+         patch("handlers.wealth_summary_handler.get_dr_totals",
+               AsyncMock(return_value=DrTotals(Decimal("0"), Decimal("0"), 0, 2))):
         result = await WealthSummaryHandler().handle(ALLOWED_USER)
     assert result.type == ResponseType.TEXT
     assert "⚠️ มี 2 รายการรอตรวจสอบ" in result.text

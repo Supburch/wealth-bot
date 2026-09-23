@@ -14,6 +14,7 @@ Two access patterns co-exist in this module:
 """
 import asyncio
 import logging
+from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from enum import IntEnum
 from typing import Generic, TypeVar
@@ -23,13 +24,14 @@ from pydantic import ValidationError
 from core.constants import TWOPLACES
 from core.exceptions import PortfolioParseError, PortfolioReadError, SheetsReadError
 from core.messages import DATA_UPDATING, PORTFOLIO_PARSE_ERROR, PORTFOLIO_READ_ERROR
-from core.sheet_config import ASSET_BREAKDOWN_RANGES, resolve_breakdown_category
+from core.sheet_config import ASSET_BREAKDOWN_RANGES, AppConfig, resolve_breakdown_category
 from models.portfolio import (
     AssetAllocation,
     AssetAllocationEntry,
     AssetBreakdown,
     AssetBreakdownItem,
     DrCostRow,
+    DrSection2Row,
     HoldingBreakdown,
     PortfolioHoldings,
     PortfolioItem,
@@ -106,6 +108,83 @@ def _is_error_value(value: object) -> bool:
     return s.startswith("#") or s == "N/A"
 
 
+# ── DR totals (shared by 'พอร์ต', 'สรุป', 'สัดส่วน') ─────────────────────────────
+
+@dataclass(frozen=True)
+class DrTotals:
+    """Aggregate DR value/cost/positions/skipped for a user's DR sheet."""
+
+    dr_value: Decimal
+    dr_cost: Decimal
+    dr_positions: int
+    dr_skipped: int
+
+
+def compute_dr_totals(
+    dr_symbols: list[str],
+    dr_cost_rows: list[DrCostRow],
+    dr_section2_rows: list[DrSection2Row],
+) -> DrTotals:
+    """Merge held DR symbols with their cost rows into THB totals.
+
+    Shared by ``PortfolioService.get_portfolio`` (domain) and the presentation
+    layer (``get_dr_totals``), so the 'Stock World (DR)' allocation value and
+    the 'สรุป' pending count stay consistent with the 'พอร์ต' command.
+    """
+    cost_by_symbol: dict[str, DrCostRow] = {
+        row.symbol.upper(): row for row in dr_cost_rows
+    }
+
+    # Section 2 ('1 Year DCA') stores total cost basis directly; derive the
+    # implied volume so it flows through the same merge as section 1.
+    for row in dr_section2_rows:
+        try:
+            size = Decimal(row.size)
+            avg_price = Decimal(row.avg_price)
+            current_price = Decimal(row.current_price)
+            if avg_price <= 0:
+                continue
+            volume = size / avg_price
+        except (InvalidOperation, ValueError, ZeroDivisionError):
+            continue
+        cost_by_symbol[row.symbol.upper()] = DrCostRow(
+            symbol=row.symbol,
+            avg_cost=row.avg_price,
+            volume=str(volume),
+            current_price=row.current_price,
+        )
+
+    dr_value = Decimal("0")
+    dr_cost = Decimal("0")
+    dr_positions = 0
+    dr_skipped = 0
+    for symbol in dr_symbols:
+        cost_row = cost_by_symbol.get(symbol.upper())
+        if cost_row is None:
+            dr_skipped += 1
+            continue
+        try:
+            avg_cost = Decimal(cost_row.avg_cost.replace(",", ""))
+            volume = Decimal(cost_row.volume.replace(",", ""))
+            current_price = Decimal(cost_row.current_price.replace(",", ""))
+        except (InvalidOperation, ValueError):
+            dr_skipped += 1
+            continue
+        if volume <= 0 or current_price <= 0:
+            dr_skipped += 1
+            continue
+        dr_value += (current_price * volume).quantize(TWOPLACES)
+        dr_cost += (avg_cost * volume).quantize(TWOPLACES)
+        dr_positions += 1
+
+    return DrTotals(
+        dr_value=dr_value.quantize(TWOPLACES),
+        dr_cost=dr_cost.quantize(TWOPLACES),
+        dr_positions=dr_positions,
+        dr_skipped=dr_skipped,
+    )
+
+
 # ── Class-based PortfolioService (domain) ─────────────────────────────────────
 
 class PortfolioService:
@@ -163,59 +242,16 @@ class PortfolioService:
 
             dr_symbols = self.repository.fetch_dr_holdings(spreadsheet_id)
             dr_cost_rows = self.repository.fetch_dr_cost_rows(spreadsheet_id).rows
-            cost_by_symbol: dict[str, DrCostRow] = {
-                row.symbol.upper(): row for row in dr_cost_rows
-            }
-
-            # Section 2 ('1 Year DCA') stores total cost basis directly; derive
-            # the implied volume so it flows through the same merge as section 1.
-            for row in self.repository.fetch_dr_cost_rows_section2(spreadsheet_id):
-                try:
-                    size = Decimal(row.size)
-                    avg_price = Decimal(row.avg_price)
-                    current_price = Decimal(row.current_price)
-                    if avg_price <= 0:
-                        continue
-                    volume = size / avg_price
-                except (InvalidOperation, ValueError, ZeroDivisionError):
-                    continue
-                cost_by_symbol[row.symbol.upper()] = DrCostRow(
-                    symbol=row.symbol,
-                    avg_cost=row.avg_price,
-                    volume=str(volume),
-                    current_price=row.current_price,
-                )
-
-            dr_value = Decimal("0")
-            dr_cost = Decimal("0")
-            dr_positions = 0
-            dr_skipped = 0
-            for symbol in dr_symbols:
-                cost_row = cost_by_symbol.get(symbol.upper())
-                if cost_row is None:
-                    dr_skipped += 1
-                    continue
-                try:
-                    avg_cost = Decimal(cost_row.avg_cost.replace(",", ""))
-                    volume = Decimal(cost_row.volume.replace(",", ""))
-                    current_price = Decimal(cost_row.current_price.replace(",", ""))
-                except (InvalidOperation, ValueError):
-                    dr_skipped += 1
-                    continue
-                if volume <= 0 or current_price <= 0:
-                    dr_skipped += 1
-                    continue
-                dr_value += (current_price * volume).quantize(TWOPLACES)
-                dr_cost += (avg_cost * volume).quantize(TWOPLACES)
-                dr_positions += 1
+            dr_section2_rows = self.repository.fetch_dr_cost_rows_section2(spreadsheet_id)
+            dr_totals = compute_dr_totals(dr_symbols, dr_cost_rows, dr_section2_rows)
 
             return ServiceResult(
                 data=PortfolioResult(
                     us_holdings=us_holdings,
-                    dr_value=dr_value.quantize(TWOPLACES),
-                    dr_cost=dr_cost.quantize(TWOPLACES),
-                    dr_positions=dr_positions,
-                    dr_skipped=dr_skipped,
+                    dr_value=dr_totals.dr_value,
+                    dr_cost=dr_totals.dr_cost,
+                    dr_positions=dr_totals.dr_positions,
+                    dr_skipped=dr_totals.dr_skipped,
                 )
             )
 
@@ -366,6 +402,67 @@ async def get_holding_breakdown(
     return index.get(symbol.upper())
 
 
+DR_ALLOCATION_NAME = "Stock World (DR)"
+
+
+class _RawRangeGateway:
+    """Adapts sheets_service.get_raw_range to the SheetsGateway protocol."""
+
+    def get_sheet_records(self, spreadsheet_id: str, range_name: str) -> list[list[str]]:
+        return get_raw_range(spreadsheet_id, range_name)
+
+
+_dr_repo: PortfolioRepository | None = None
+
+
+def _dr_repository() -> PortfolioRepository:
+    """Build (once) the repository used to read DR data in the async path."""
+    global _dr_repo
+    if _dr_repo is None:
+        _dr_repo = PortfolioRepository(_RawRangeGateway(), AppConfig())
+    return _dr_repo
+
+
+@cached("dr_totals")
+async def get_dr_totals(user_info: UserInfo) -> DrTotals:
+    """Fetch and merge DR positions (THB) for allocation/summary correction.
+
+    Best-effort: a missing DR sheet (repository returns []) or a DR read error
+    yields zero totals so 'สรุป'/'สัดส่วน' still respond.
+    """
+    repo = _dr_repository()
+
+    def _read() -> DrTotals:
+        try:
+            symbols = repo.fetch_dr_holdings(user_info.spreadsheet_id)
+            cost_rows = repo.fetch_dr_cost_rows(user_info.spreadsheet_id).rows
+            section2 = repo.fetch_dr_cost_rows_section2(user_info.spreadsheet_id)
+        except PortfolioReadError:
+            logger.warning("DR totals unavailable; using zero DR", exc_info=True)
+            return DrTotals(Decimal("0"), Decimal("0"), 0, 0)
+        return compute_dr_totals(symbols, cost_rows, section2)
+
+    return await asyncio.to_thread(_read)
+
+
+def _replace_dr_value(
+    values: list[tuple[str, Decimal]], dr_value: Decimal
+) -> list[tuple[str, Decimal]]:
+    """Replace the 'Stock World (DR)' value with the live DR value.
+
+    Replacement only — never add a second DR row, which would double-count the
+    DR positions already reported by the sheet's other asset rows.
+    """
+    target = DR_ALLOCATION_NAME.casefold()
+    replaced: list[tuple[str, Decimal]] = []
+    for name, value in values:
+        if name.strip().casefold() == target:
+            replaced.append((name, dr_value))
+        else:
+            replaced.append((name, value))
+    return replaced
+
+
 @cached("asset_allocation")
 async def get_asset_allocation(user_info: UserInfo) -> AssetAllocation:
     """
@@ -401,6 +498,12 @@ async def get_asset_allocation(user_info: UserInfo) -> AssetAllocation:
             logger.warning("Skipping negative allocation entry %s", name)
             continue
         values.append((name, value))
+
+    # Replace the stale 'Stock World (DR)' cell (the sheet can lag behind the
+    # live DR cost table) with the live-computed DR value so 'สัดส่วน' matches
+    # the 'พอร์ต' command. Replacement only — never a second DR row.
+    dr_totals = await get_dr_totals(user_info)
+    values = _replace_dr_value(values, dr_totals.dr_value)
 
     if not values:
         return AssetAllocation(entries=[])
@@ -471,29 +574,6 @@ async def get_asset_breakdown(user_info: UserInfo, category: str) -> AssetBreakd
     ]
     items.sort(key=lambda item: item.value, reverse=True)
     return AssetBreakdown(category=canonical, items=items)
-
-
-async def get_dr_pending_flags(user_info: UserInfo) -> int:
-    """Read the ⚠️ pending-review counter from 'from Streaming-DR'!O1.
-
-    Returns 0 when the cell is missing, blank, or unreadable so a transient
-    read error can never break the summary command.
-    """
-    try:
-        rows = await asyncio.to_thread(
-            get_raw_range, user_info.spreadsheet_id, "from Streaming-DR!O1"
-        )
-    except Exception:
-        return 0
-    if not rows or not rows[0]:
-        return 0
-    raw = str(rows[0][0]).strip()
-    if not raw or raw.startswith("#"):
-        return 0
-    try:
-        return int(float(raw.replace(",", "")))
-    except ValueError:
-        return 0
 
 
 ALLOCATION_TOLERANCE = Decimal("0.5")

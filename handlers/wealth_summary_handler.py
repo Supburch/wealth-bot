@@ -4,7 +4,7 @@ from models.response import AppResponse
 from core.enums import ResponseType
 from core.exceptions import SheetsReadError
 from core.messages import ACCESS_DENIED, DATA_UPDATING
-from services.portfolio_service import get_asset_allocation, get_dr_pending_flags
+from services.portfolio_service import get_asset_allocation, get_dr_totals
 from services.user_mapping_service import get_user
 
 
@@ -41,7 +41,7 @@ class WealthSummaryHandler:
             "สัดส่วนสินทรัพย์:\n"
             f"{lines}"
         )
-        pending = await get_dr_pending_flags(user_info)
-        if pending > 0:
-            text += f"\n\n⚠️ มี {pending} รายการรอตรวจสอบ"
+        dr_totals = await get_dr_totals(user_info)
+        if dr_totals.dr_skipped > 0:
+            text += f"\n\n⚠️ มี {dr_totals.dr_skipped} รายการรอตรวจสอบ"
         return AppResponse(type=ResponseType.TEXT, text=text)
