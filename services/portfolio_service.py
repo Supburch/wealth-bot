@@ -158,7 +158,21 @@ def compute_dr_totals(
     dr_cost = Decimal("0")
     dr_positions = 0
     dr_skipped = 0
-    for symbol in dr_symbols:
+
+    # Held positions span two disjoint blocks: the main block (already in
+    # ``dr_symbols``) and the '1 Year DCA' block (``dr_section2_rows``, whose
+    # symbols are not present in ``dr_symbols``). Merge both symbol sets so a
+    # position is never dropped just because its cost basis lives in the other
+    # block. Orphans in ``dr_symbols`` are still surfaced via ``dr_skipped``.
+    positions: list[str] = list(dr_symbols)
+    seen: set[str] = {symbol.upper() for symbol in positions}
+    for row in dr_section2_rows:
+        symbol = row.symbol.upper()
+        if symbol not in seen:
+            positions.append(row.symbol)
+            seen.add(symbol)
+
+    for symbol in positions:
         cost_row = cost_by_symbol.get(symbol.upper())
         if cost_row is None:
             dr_skipped += 1

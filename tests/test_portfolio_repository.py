@@ -42,18 +42,18 @@ def test_fetch_portfolio_rows_skips_blank_rows_silently():
     assert len(result.short_rows) == 0
 
 
-def test_fetch_dr_holdings_returns_normalized_symbols():
+def test_fetch_dr_holdings_returns_held_symbols():
     gateway = FakeGateway([
-        # symbol(C index 2) ... L=type(11)
-        ["", "", "NVDR", "", "", "", "", "", "", "", "", "DR"],
-        ["", "", "AAPL80.BK", "", "", "", "", "", "", "", "", "DR"],
-        ["", "", "USA", "", "", "", "", "", "", "", "", "US"],
+        # A=date(0) B(1) C=avg(2) D=shares(3) E=size(4) F=pct(5) G=symbol(6) H=price(7)
+        ["", "", "8.05", "500", "", "-61.99%", "HERMES80", "3.06"],
+        ["", "", "1.70", "800", "", "-46.47%", "TRIPCOM80.BK", "0.91"],
+        ["", "", "", "", "", "#DIV/0!", "THAIBEV19", "5.20"],  # watch-only (no cost) -> skipped
         [],  # blank row
     ])
     repo = PortfolioRepository(gateway, AppConfig())
     result = repo.fetch_dr_holdings("sheet")
 
-    assert result == ["NVDR", "AAPL80"]
+    assert result == ["HERMES80", "TRIPCOM80"]
 
 
 def test_fetch_dr_holdings_empty_sheet():
@@ -63,10 +63,10 @@ def test_fetch_dr_holdings_empty_sheet():
     assert result == []
 
 
-def test_fetch_dr_holdings_skips_non_dr_and_blank_rows():
+def test_fetch_dr_holdings_skips_blank_and_watchonly_rows():
     gateway = FakeGateway([
-        ["", "", "", "", "", "", "", "", "", "", "", ""],  # all-blank row
-        ["", "", "BOND", "", "", "", "", "", "", "", "", "Bond"],  # non-DR type
+        ["", "", "", "", "", "", "", ""],          # all-blank row
+        ["", "", "", "", "", "", "WATCHONLY", "4.48"],  # symbol but no cost basis
     ])
     repo = PortfolioRepository(gateway, AppConfig())
     result = repo.fetch_dr_holdings("sheet")
@@ -97,21 +97,21 @@ def test_fetch_dr_holdings_still_raises_on_other_read_errors():
 
 def test_fetch_dr_cost_rows_returns_valid_rows():
     gateway = FakeGateway([
-        # A=avg(0) B=volume(1) D=pct(3) E=symbol(4) F=price(5)
-        ["฿10.00", "100", "", "12.5%", "NVDR", "฿12.00"],
-        ["20", "50", "", "#N/A", "AAPL80", "18"],  # error % P/L -> skipped
-        ["0", "10", "", "5%", "ZERO", "10"],  # non-positive avg cost -> skipped
-        ["30", "0", "", "5%", "EMPTYVOL", "10"],  # non-positive volume -> skipped
-        ["40", "20", "", "-3%", "AAPL80.BK", "35"],  # valid, normalized symbol
+        # C=avg(2) D=volume(3) F=pct(5) G=symbol(6) H=price(7)
+        ["", "", "10.00", "100", "", "12.5%", "NVDR", "12.00"],
+        ["", "", "20", "50", "", "#N/A", "AAPL80", "18"],  # error % P/L -> skipped
+        ["", "", "0", "10", "", "5%", "ZERO", "10"],  # non-positive avg cost -> skipped
+        ["", "", "30", "0", "", "5%", "EMPTYVOL", "10"],  # non-positive volume -> skipped
+        ["", "", "40", "20", "", "-3%", "AAPL80.BK", "35"],  # valid, normalized symbol
     ])
     repo = PortfolioRepository(gateway, AppConfig())
     result = repo.fetch_dr_cost_rows("sheet")
 
     assert len(result.rows) == 2
     assert result.rows[0].symbol == "NVDR"
-    assert result.rows[0].avg_cost == "฿10.00"
+    assert result.rows[0].avg_cost == "10.00"
     assert result.rows[0].volume == "100"
-    assert result.rows[0].current_price == "฿12.00"
+    assert result.rows[0].current_price == "12.00"
     assert result.rows[1].symbol == "AAPL80"
 
 
@@ -138,11 +138,11 @@ def test_fetch_dr_cost_rows_raises_on_other_read_errors():
 
 def test_fetch_dr_cost_rows_section2_returns_valid_rows():
     gateway = FakeGateway([
-        # C=size(2) E=symbol(4) G=price(6) H=avg(7) M=pct(12)
-        ["", "", "฿6,054", "", "ASML01", "", "45.75", "19.43", "", "", "", "", "135.46%"],
-        ["", "", "0", "", "ZERO", "", "10", "5", "", "", "", "", "5%"],       # non-positive size -> skipped
-        ["", "", "100", "", "ERR", "", "10", "5", "", "", "", "", "#N/A"],    # error % -> skipped
-        ["", "", "฿4,060", "", "LOREAL80.BK", "", "1.46", "1.45", "", "", "", "", "0.69%"],
+        # G=symbol(6) H=size(7) I=price(8) J=avg(9) O=pct(14)
+        ["", "", "", "", "", "", "ASML01", "฿6,054", "48.50", "19.43", "", "", "", "", "135.46%"],
+        ["", "", "", "", "", "", "ZERO", "0", "10", "5", "", "", "", "", "5%"],      # non-positive size -> skipped
+        ["", "", "", "", "", "", "ERR", "100", "10", "5", "", "", "", "", "#N/A"],   # error % -> skipped
+        ["", "", "", "", "", "", "LOREAL80.BK", "฿4,060", "1.46", "1.45", "", "", "", "", "0.69%"],
     ])
     repo = PortfolioRepository(gateway, AppConfig())
     result = repo.fetch_dr_cost_rows_section2("sheet")
@@ -151,7 +151,7 @@ def test_fetch_dr_cost_rows_section2_returns_valid_rows():
     assert result[0].symbol == "ASML01"
     assert result[0].size == "6054"
     assert result[0].avg_price == "19.43"
-    assert result[0].current_price == "45.75"
+    assert result[0].current_price == "48.50"
     assert result[1].symbol == "LOREAL80"
     assert result[1].size == "4060"
 

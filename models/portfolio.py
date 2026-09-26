@@ -26,7 +26,7 @@ class PortfolioRow(BaseModel):
 
 
 class DrCostRow(BaseModel):
-    """A DR cost-table row read from 'from Streaming-DR'!A201:G233 (section 1).
+    """A DR cost-table row read from the 'from Streaming-DR' main block.
 
     This section holds DR positions whose cost basis is complete and internally
     consistent (avg cost × volume = total cost). Values are THB-denominated, so

@@ -23,9 +23,10 @@ class PortfolioFetchResult:
     short_rows: List[ShortRow]
 
 
-# Column indices (0-based) for the 'from Streaming-DR' main table (range A2:N200).
-_DR_SYMBOL_COL = 2    # C — symbol
-_DR_TYPE_COL = 11     # L — type marker ("DR")
+# Column indices (0-based) for the 'from Streaming-DR' main block (range A2:H45).
+# Held DRs carry their cost basis inline: C=avg price, D=shares, E=size (THB),
+# F=% P/L, G=symbol, H=current price. Watch-only rows leave C/D blank or zero.
+_DR_SYMBOL_COL = 6    # G — symbol
 
 
 def _is_blank_row(row: List[str]) -> bool:
@@ -68,19 +69,20 @@ def _is_error_cell(value: str) -> bool:
     return s.startswith("#") or s == "N/A"
 
 
-# Column indices (0-based) for the DR cost table (range A201:G233, section 1).
-_DR_COST_AVG_COL = 0      # A — avg cost per share
-_DR_COST_VOLUME_COL = 1   # B — volume (shares)
-_DR_COST_PCT_COL = 3      # D — % P/L (error rows are filtered out)
-_DR_COST_SYMBOL_COL = 4   # E — symbol
-_DR_COST_PRICE_COL = 5    # F — current price per share
+# Column indices (0-based) for the DR cost table (section 1 = the main block's
+# inline cost columns, same range A2:H45).
+_DR_COST_AVG_COL = 2      # C — avg cost per share
+_DR_COST_VOLUME_COL = 3   # D — volume (shares)
+_DR_COST_PCT_COL = 5      # F — % P/L (error rows are filtered out)
+_DR_COST_SYMBOL_COL = 6   # G — symbol
+_DR_COST_PRICE_COL = 7    # H — current price per share
 
-# Column indices (0-based) for the DR cost table section 2 (range A241:M249).
-_DR2_SIZE_COL = 2        # C — total cost basis (THB)
-_DR2_SYMBOL_COL = 4      # E — symbol
-_DR2_PRICE_COL = 6       # G — current price per share
-_DR2_AVG_COL = 7         # H — average cost per share
-_DR2_PCT_COL = 12        # M — % P/L (error rows filtered out)
+# Column indices (0-based) for the DR '1 Year DCA' block (range A46:Q60, section 2).
+_DR2_SIZE_COL = 7        # H — total cost basis (THB)
+_DR2_SYMBOL_COL = 6      # G — symbol
+_DR2_PRICE_COL = 8       # I — current price per share
+_DR2_AVG_COL = 9         # J — average cost per share
+_DR2_PCT_COL = 14        # O — % P/L (error rows filtered out)
 
 
 @dataclass
@@ -138,11 +140,13 @@ class PortfolioRepository:
             raise PortfolioReadError("Error reading portfolio data") from e
 
     def fetch_dr_holdings(self, spreadsheet_id: str) -> List[str]:
-        """Return the DR position symbols (type marker "DR") from the main table.
+        """Return the held DR symbols from the main block.
 
-        The ⚠ flag and market-value columns are deliberately ignored: the flag is
-        a false positive caused by a broken VLOOKUP, and market value is read from
-        the cost table instead. Symbols are normalized ('.BK' stripped, uppercased).
+        The main block stores each held DR's cost basis inline (avg price in C,
+        shares in D, symbol in G). Only rows with a positive cost basis count as
+        held; watch-only rows leave C/D blank or zero and are skipped. Symbols
+        are normalized ('.BK' stripped, uppercased). The '1 Year DCA' block is
+        read separately as section 2.
         """
         try:
             raw_data = self.sheets_gateway.get_sheet_records(
@@ -169,13 +173,17 @@ class PortfolioRepository:
         for row in raw_data:
             if not row or _is_blank_row(row):
                 continue
-            type_marker = str(row[_DR_TYPE_COL]).strip() if len(row) > _DR_TYPE_COL else ""
-            if type_marker != "DR":
-                continue
             symbol = str(row[_DR_SYMBOL_COL]).strip() if len(row) > _DR_SYMBOL_COL else ""
             normalized = _normalize_dr_symbol(symbol)
-            if normalized:
-                symbols.append(normalized)
+            if not normalized:
+                continue
+            avg_cost = str(row[_DR_COST_AVG_COL]).strip() if len(row) > _DR_COST_AVG_COL else ""
+            volume = str(row[_DR_COST_VOLUME_COL]).strip() if len(row) > _DR_COST_VOLUME_COL else ""
+            # Held only when the cost basis is positive; watch-only rows have a
+            # blank/zero avg price and shares and are skipped, not counted.
+            if not _is_positive_number(avg_cost) or not _is_positive_number(volume):
+                continue
+            symbols.append(normalized)
         return symbols
 
     def fetch_dr_cost_rows(self, spreadsheet_id: str) -> DrCostFetchResult:

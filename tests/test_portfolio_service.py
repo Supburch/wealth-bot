@@ -494,6 +494,27 @@ def test_compute_dr_totals_merges_sections():
     assert totals.dr_skipped == 1                    # ORPHAN80 has no cost row
 
 
+def test_compute_dr_totals_includes_dca_symbols_not_in_main_block():
+    """DCA-block symbols are counted even when absent from the main-block list."""
+    from models.portfolio import DrCostRow, DrSection2Row
+    from services.portfolio_service import compute_dr_totals
+
+    totals = compute_dr_totals(
+        dr_symbols=["AAPL80"],
+        dr_cost_rows=[
+            DrCostRow(symbol="AAPL80", avg_cost="40", volume="100", current_price="50"),
+        ],
+        dr_section2_rows=[
+            DrSection2Row(symbol="ASML01", size="6054", avg_price="19.43", current_price="45.75"),
+        ],
+    )
+
+    assert totals.dr_value == Decimal("19254.79")   # 5000.00 + 14254.79
+    assert totals.dr_cost == Decimal("10054.00")     # 4000.00 + 6054.00
+    assert totals.dr_positions == 2
+    assert totals.dr_skipped == 0
+
+
 def test_replace_dr_value_replaces_only():
     """_replace_dr_value swaps the DR entry value without adding a duplicate."""
     from services.portfolio_service import _replace_dr_value
